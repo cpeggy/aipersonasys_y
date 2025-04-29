@@ -1,0 +1,125 @@
+/* Main Styles */
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #f8f9fa;
+}
+
+.container-fluid {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.container {
+    flex: 1;
+}
+
+/* Card Styles */
+.card {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0,0,0,.125);
+}
+
+/* Form Styles */
+.form-control {
+    border-radius: 0.25rem;
+}
+
+.form-control:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Button Styles */
+.btn {
+    border-radius: 0.25rem;
+    transition: all 0.3s;
+}
+
+/* Persona 卡片樣式 */
+.persona-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-bottom: 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.persona-card:hover {
+    border-color: #adb5bd;
+    background-color: #f8f9fa;
+}
+
+.persona-card.selected {
+    border-color: #0d6efd;
+    background-color: #e7f0ff;
+}
+
+.persona-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.persona-description {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+/* Chart Container */
+.chart-container {
+    margin: 1.5rem 0;
+}
+
+/* Feedback Results */
+.reason-item {
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    background-color: #f8f9fa;
+}
+
+/* Footer */
+.footer {
+    margin-top: auto;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Animation for loading */
+@keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .row {
+        margin-right: 0;
+        margin-left: 0;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .container {
+        padding-right: 0.5rem;
+        padding-left: 0.5rem;
+    }
+}

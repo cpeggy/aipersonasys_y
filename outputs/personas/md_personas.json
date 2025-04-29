@@ -1,0 +1,126 @@
+[
+    {
+        "persona_id": "md_1",
+        "suggested_learning_resources": []
+    },
+    {
+        "persona_id": "md_1",
+        "description": "N3檢定目標導向型學習者，具備一定基礎，希望系統化準備考試，並能將所學應用於日常生活。",
+        "motivation": "通過N3檢定，提升學習動力，並能在日本旅行或日常生活中進行基本溝通，閱讀雜誌或網站資訊。",
+        "challenges": "文法概念模糊，缺乏系統性學習，聽力口說能力較弱，缺乏練習機會，學過的知識容易遺忘，找不到有效的複習方式。",
+        "learning_goals": "掌握N3核心單字與文法，能夠理解考試題型並有效解題，提升聽力理解能力，能夠進行日常對話。",
+        "preferred_learning_methods": "短文閱讀結合單字與文法解析，線上練習題反覆練習，模擬測驗了解學習成效，APP支援隨時隨地學習。",
+        "suggested_learning_resources": [
+            {
+                "feature_name": "N3程度核心單字延伸短文",
+                "description": "20-30篇包含N4-N3文法的短文，主題涵蓋日檢及日常生活",
+                "justification": "結合考試及生活情境，幫助建立實際語感，提升閱讀理解能力及日常應用能力。"
+            },
+            {
+                "feature_name": "每單元30題日檢題型 + 詳細解析",
+                "description": "每單元安排30題日檢題型來強化考點，提供詳細解析",
+                "justification": "針對考試重點進行練習，掌握考試技巧，並透過詳細解析理解錯誤原因。"
+            },
+            {
+                "feature_name": "WORD UP APP 支援",
+                "description": "透過APP進行單字記憶、聽力播放、閱讀測驗等反覆練習",
+                "justification": "利用零碎時間進行複習，加強記憶，隨時隨地學習。"
+            },
+            {
+                "feature_name": "模擬測驗 + 詳細解析",
+                "description": "正式考前進行模擬測驗，並提供詳細解析",
+                "justification": "了解考試題型，掌握考試技巧，評估學習成效，提升應試信心。"
+            }
+        ]
+    },
+    {
+        "persona_id": "md_2",
+        "description": "對日本文化有興趣的興趣導向學習者，希望穩固日文基礎，並能聽懂日劇或與日本人自然對話。",
+        "motivation": "深入了解日本文化，未來可能在日本生活或工作，與家人(配偶)能更好交流。",
+        "challenges": "單字遺忘嚴重，發音不標準，擔心線上課程互動性不足，學習時間有限，沒有強烈的考試動機。",
+        "learning_goals": "穩固日文基礎，能夠聽懂大部分日常對話，能與日本人進行簡單交流，能閱讀簡單的日文文章。",
+        "preferred_learning_methods": "情境式學習，透過聽力與語音學習，有趣的短文內容，APP支援隨時隨地學習。",
+        "suggested_learning_resources": [
+            {
+                "feature_name": "生動有趣的短文素材",
+                "description": "20-30篇生活化或娛樂向的短文",
+                "justification": "引起學習興趣，更容易記憶單字與文法，並能學習到實用的日常用語。"
+            },
+            {
+                "feature_name": "科技輔助系統提供聽力與語音訓練",
+                "description": "提供跟讀、語音輸入、AI發音評測等功能",
+                "justification": "幫助矯正發音，提升口說能力，並強化語感。"
+            },
+            {
+                "feature_name": "WORD UP APP支援",
+                "description": "透過APP進行單字記憶、聽力播放、閱讀測驗等反覆練習",
+                "justification": "利用零碎時間進行複習，加強記憶，隨時隨地學習。"
+            },
+            {
+                "feature_name": "學習進度追蹤與學習激勵",
+                "description": "追蹤學習進度，提供成就機制與學習挑戰",
+                "justification": "增加學習動力，更容易堅持下去。"
+            }
+        ]
+    },
+    {
+        "persona_id": "md_3",
+        "description": "具備N3以上程度，希望精進日文能力，能閱讀專業文獻或在日本工作，對語法及句子結構有較高要求。",
+        "motivation": "閱讀法律或醫學相關日文文獻，提升專業能力，為未來在日本工作或生活做準備。",
+        "challenges": "聽力理解困難，複合句與助詞使用容易混淆，自學時缺乏有效的驗證方式，希望能深入理解句子架構",
+        "learning_goals": "能夠拆解複雜句型，理解句子結構，提升聽力理解能力，能夠閱讀新聞與專業文章。",
+        "preferred_learning_methods": "結構化的學習方式，語法與句子解析，聽力分層訓練，模擬測驗提供詳細解析與參考章節",
+        "suggested_learning_resources": [
+            {
+                "feature_name": "句子拆解 + 語法解析",
+                "description": "提供詳細的句型拆解(主詞、動詞、助詞等標記)，及語法對比分析",
+                "justification": "幫助理解句子結構，掌握語法與語感。"
+            },
+            {
+                "feature_name": "聽力訓練分級",
+                "description": "從慢速聽力到真實語速，逐步提升聽力理解能力",
+                "justification": "幫助學員適應不同語速的日文，提升聽力技巧。"
+            },
+            {
+                "feature_name": "模擬測驗 + 詳細解析",
+                "description": "詳細解析標註考點與相關課程章節",
+                "justification": "幫助學生對應學習內容，更有效地理解錯誤原因。"
+            },
+            {
+                "feature_name": "AI 跟讀、發音糾正",
+                "description": "AI提供即時反饋及語調評估",
+                "justification": "糾正發音，提升語音表達能力。"
+            }
+        ]
+    },
+    {
+        "persona_id": "md_4",
+        "description": "通過 N3 檢定，但對文法應用和解題技巧不夠扎實的學習者。需要更多實際的應用，與有效的應試策略。",
+        "motivation": "提升日常生活中的日語應用能力，為挑戰 N2 或 N1 檢定做準備，獲得更高的檢定成績。",
+        "challenges": "聽力理解能力不足，閱讀速度慢，文法應用不夠靈活，缺乏考試技巧，對日文的自然用法掌握不足",
+        "learning_goals": "提升日語聽說讀寫能力，能夠流暢地進行日常會話，掌握 N3 考試的技巧，理解日語的自然用法。",
+        "preferred_learning_methods": "生活化的短文閱讀、情境模擬對話練習、解題策略分析，配合 AI 評測修正發音。",
+        "suggested_learning_resources": [
+            {
+                "feature_name": "日常情境短文閱讀",
+                "description": "提供購物、點餐、交通等日常情境的短文。",
+                "justification": "加強日語的實際應用，提升閱讀速度和理解能力。"
+            },
+            {
+                "feature_name": "AI 口說評測",
+                "description": "提供口說練習並即時評分和修正。",
+                "justification": "協助矯正發音，提升口說流暢度，並增強口語表達能力。"
+            },
+            {
+                "feature_name": "解題策略分析",
+                "description": "分析日檢 N3 常見題型和解題技巧",
+                "justification": "協助考生快速掌握解題技巧，提升應試能力。"
+            },
+            {
+                "feature_name": "文法重點提醒和例句",
+                "description": "提醒課程中遇到的 N4 重要文法，並提供例句",
+                "justification": "確保 N4 基礎穩固，並在學習 N3 文法時能有更好的理解。"
+            }
+        ]
+    }
+]

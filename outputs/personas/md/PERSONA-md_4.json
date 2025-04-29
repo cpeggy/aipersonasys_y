@@ -1,0 +1,30 @@
+{
+    "persona_id": "md_4",
+    "description": "通過 N3 檢定，但對文法應用和解題技巧不夠扎實的學習者。需要更多實際的應用，與有效的應試策略。",
+    "motivation": "提升日常生活中的日語應用能力，為挑戰 N2 或 N1 檢定做準備，獲得更高的檢定成績。",
+    "challenges": "聽力理解能力不足，閱讀速度慢，文法應用不夠靈活，缺乏考試技巧，對日文的自然用法掌握不足",
+    "learning_goals": "提升日語聽說讀寫能力，能夠流暢地進行日常會話，掌握 N3 考試的技巧，理解日語的自然用法。",
+    "preferred_learning_methods": "生活化的短文閱讀、情境模擬對話練習、解題策略分析，配合 AI 評測修正發音。",
+    "suggested_learning_resources": [
+        {
+            "feature_name": "日常情境短文閱讀",
+            "description": "提供購物、點餐、交通等日常情境的短文。",
+            "justification": "加強日語的實際應用，提升閱讀速度和理解能力。"
+        },
+        {
+            "feature_name": "AI 口說評測",
+            "description": "提供口說練習並即時評分和修正。",
+            "justification": "協助矯正發音，提升口說流暢度，並增強口語表達能力。"
+        },
+        {
+            "feature_name": "解題策略分析",
+            "description": "分析日檢 N3 常見題型和解題技巧",
+            "justification": "協助考生快速掌握解題技巧，提升應試能力。"
+        },
+        {
+            "feature_name": "文法重點提醒和例句",
+            "description": "提醒課程中遇到的 N4 重要文法，並提供例句",
+            "justification": "確保 N4 基礎穩固，並在學習 N3 文法時能有更好的理解。"
+        }
+    ]
+}

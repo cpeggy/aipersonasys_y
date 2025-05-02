@@ -1,25 +1,15 @@
-# Web framework
-Flask==2.2.5
+Flask==2.3.3
 python-dotenv==1.0.0
-
-# CSV/MD 處理
-pandas==1.5.3
-chardet==5.1.0
-
-# HTTP requests
-requests==2.32.3
-
-# AI SDKs
-openai==0.27.0
-python-generative-ai==0.3.0         # google.generativeai 客戶端
-google-api-core>=2.16.0              # google-generative-ai 的底層依賴
-
-# Autogen framework (請確認 PyPI 上的名稱與版本)
-autogen-agentchat
-autogen-ext
-
-# 視覺化
-plotly==5.14.1
-
-# WSGI server
-gunicorn==20.1.0
+pandas==2.1.1
+chardet==5.2.0
+plotly==5.18.0
+google-generativeai==0.3.2
+openai==1.3.0
+autogen-agentchat==0.2.0
+opencc-python-reimplemented==0.1.7
+werkzeug==2.3.7
+asyncio==3.4.3
+nest-asyncio==1.5.8
+numpy==1.26.0
+google-api-core==2.15.0
+gunicorn==21.2.0

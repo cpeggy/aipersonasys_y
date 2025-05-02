@@ -16,8 +16,12 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 import time
 from openai import RateLimitError  # 確保導入這個
 import opencc
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 GEMINI_MODEL = "gemini-2.0-flash"
+MAX_RETRIES = 5  # 最大重試次數
+MIN_WAIT = 2  # 最小等待時間（秒）
+MAX_WAIT = 60  # 最大等待時間（秒）
 
 def clean_persona(persona):
     cleaned = {k: v for k, v in persona.items() if v and v != '...'}
@@ -47,20 +51,56 @@ async def process_csv(csv_path, output_folder):
 
 async def process_csv2(csv_path, output_folder):
     """處理第二種類型的 CSV，使用不同的前綴來區分 persona ID"""
-    with open(csv_path, 'rb') as f:
-        encoding = chardet.detect(f.read(10000))['encoding']
-    df = pd.read_csv(csv_path, encoding=encoding)
-    full_text = df.to_string(index=False)
+    try:
+        # 嘗試使用不同的編碼方式讀取檔案
+        encoding = None
+        try:
+            with open(csv_path, 'rb') as f:
+                encoding_result = chardet.detect(f.read(10000))
+                encoding = encoding_result['encoding']
+                print(f"檢測到文件編碼：{encoding}，置信度：{encoding_result['confidence']}")
+        except Exception as e:
+            print(f"檢測編碼時出錯：{e}，將使用 utf-8")
+            encoding = 'utf-8'
+        
+        try:
+            df = pd.read_csv(csv_path, encoding=encoding)
+        except UnicodeDecodeError:
+            print(f"使用 {encoding} 解碼失敗，嘗試 utf-8 編碼")
+            df = pd.read_csv(csv_path, encoding='utf-8', errors='replace')
+        
+        full_text = df.to_string(index=False)
 
-    estimated_tokens = len(full_text) / 2
-    if estimated_tokens > 100000:
-        raise ValueError("問卷資料太大，超過模型可以處理的範圍，請減少資料量。")
+        estimated_tokens = len(full_text) / 2
+        if estimated_tokens > 100000:
+            raise ValueError("問卷資料太大，超過模型可以處理的範圍，請減少資料量。")
 
-    print(f"CSV2資料總長度：{len(full_text)} 字元，估算約 {int(estimated_tokens)} tokens")
+        print(f"CSV2資料總長度：{len(full_text)} 字元，估算約 {int(estimated_tokens)} tokens")
 
-    prompt = generate_prompt(full_text, is_csv=True)
-    personas, messages = await _generate_personas(prompt)
-    return _save_personas(personas, output_folder, "csv2", messages)
+        prompt = generate_prompt(full_text, is_csv=True)
+        
+        # 使用改進的錯誤處理和重試機制
+        retry_count = 0
+        max_retries = 3
+        
+        while True:
+            try:
+                personas, messages = await _generate_personas(prompt)
+                return _save_personas(personas, output_folder, "csv2", messages)
+            except Exception as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    print(f"已達最大重試次數 ({max_retries})，放棄處理")
+                    raise
+                
+                wait_time = min(30, 5 * retry_count)  # 逐漸增加等待時間，但最多等 30 秒
+                print(f"處理時發生錯誤：{str(e)}。將在 {wait_time} 秒後重試 ({retry_count}/{max_retries})...")
+                await asyncio.sleep(wait_time)
+    
+    except Exception as e:
+        print(f"CSV2 處理過程中出現錯誤：{str(e)}")
+        # 返回空結果以避免前端完全崩潰
+        return "", "", "", []
 
 async def process_md(md_paths, output_folder):
     contents = []
@@ -152,28 +192,43 @@ async def process_large_csv(csv_path, output_folder, batch_size=BATCH_SIZE):
         # 為每個批次生成專屬提示
         chunk_prompt = generate_prompt(chunk, is_csv=True)
         
-        try:
-            # 處理此批次
-            chunk_personas, chunk_messages = await _generate_personas(chunk_prompt)
-            
-            # 添加批次信息到每個 persona
-            for p in chunk_personas:
-                p['batch_info'] = f"Batch {i+1}/{len(chunks)}"
-            
-            # 收集結果
-            all_personas.extend(chunk_personas)
-            all_messages.extend(chunk_messages)
-            
-            # 批次之間等待短暫時間，避免過度頻繁的 API 調用
-            print(f"批次 {i+1} 完成，生成了 {len(chunk_personas)} 個 personas")
-            if i < len(chunks) - 1:  # 如果不是最後一個批次
-                wait_time = 5  # 等待 5 秒
-                print(f"等待 {wait_time} 秒後處理下一批次...")
-                await asyncio.sleep(wait_time)
+        retry_count = 0
+        max_chunk_retries = 2  # 每個批次最多重試次數
+        
+        while retry_count <= max_chunk_retries:
+            try:
+                # 處理此批次
+                chunk_personas, chunk_messages = await _generate_personas(chunk_prompt)
                 
-        except Exception as e:
-            print(f"批次 {i+1} 處理出錯: {e}")
-            # 記錄錯誤但繼續處理下一個批次
+                # 添加批次信息到每個 persona
+                for p in chunk_personas:
+                    p['batch_info'] = f"Batch {i+1}/{len(chunks)}"
+                
+                # 收集結果
+                all_personas.extend(chunk_personas)
+                all_messages.extend(chunk_messages)
+                
+                # 批次之間等待短暫時間，避免過度頻繁的 API 調用
+                print(f"批次 {i+1} 完成，生成了 {len(chunk_personas)} 個 personas")
+                if i < len(chunks) - 1:  # 如果不是最後一個批次
+                    wait_time = 5  # 等待 5 秒
+                    print(f"等待 {wait_time} 秒後處理下一批次...")
+                    await asyncio.sleep(wait_time)
+                
+                # 成功處理，跳出重試循環
+                break
+                
+            except Exception as e:
+                retry_count += 1
+                print(f"批次 {i+1} 處理出錯: {e}")
+                
+                if retry_count <= max_chunk_retries:
+                    wait_time = min(60, 15 * retry_count)  # 逐漸增加等待時間
+                    print(f"將在 {wait_time} 秒後重試批次 {i+1} ({retry_count}/{max_chunk_retries})...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"批次 {i+1} 已達最大重試次數，繼續處理下一批次")
+                    # 記錄錯誤但繼續處理下一個批次
     
     # 如果至少有一些 personas 成功生成，則保存它們
     if all_personas:
@@ -182,130 +237,189 @@ async def process_large_csv(csv_path, output_folder, batch_size=BATCH_SIZE):
     else:
         raise ValueError("所有批次處理都失敗，未能生成任何 persona")
 
-# 對於 CSV2，添加相同的批次處理函數
+# 對於 CSV2，添加改進的批次處理函數
 async def process_large_csv2(csv_path, output_folder, batch_size=15000):
-    """處理大型 CSV2 文件，分批發送到 API"""
-    with open(csv_path, 'rb') as f:
-        encoding = chardet.detect(f.read(10000))['encoding']
-    
-    df = pd.read_csv(csv_path, encoding=encoding)
-    full_text = df.to_string(index=False)
-    
-    # 計算 token 數量
-    estimated_tokens = len(full_text) / 2
-    print(f"大型CSV2資料總長度：{len(full_text)} 字元，估算約 {int(estimated_tokens)} tokens")
-    print(f"將進行分批處理，每批約 {batch_size/2} tokens")
-    
-    # 分割文本為多個較小的部分
-    chunks = []
-    for i in range(0, len(full_text), batch_size):
-        chunks.append(full_text[i:i + batch_size])
-    
-    print(f"共分割為 {len(chunks)} 個批次")
-    
-    all_personas = []
-    all_messages = []
-    
-    for i, chunk in enumerate(chunks):
-        print(f"處理第 {i+1}/{len(chunks)} 批次，大小約 {len(chunk) / 2} tokens")
-        
-        # 為每個批次生成專屬提示
-        chunk_prompt = generate_prompt(chunk, is_csv=True)
+    """處理大型 CSV2 文件，使用改進的錯誤處理策略"""
+    try:
+        # 嘗試使用不同的編碼方式讀取檔案
+        encoding = None
+        try:
+            with open(csv_path, 'rb') as f:
+                encoding_result = chardet.detect(f.read(10000))
+                encoding = encoding_result['encoding']
+                print(f"檢測到文件編碼：{encoding}，置信度：{encoding_result['confidence']}")
+        except Exception as e:
+            print(f"檢測編碼時出錯：{e}，將使用 utf-8")
+            encoding = 'utf-8'
         
         try:
-            # 處理此批次
-            chunk_personas, chunk_messages = await _generate_personas(chunk_prompt)
+            df = pd.read_csv(csv_path, encoding=encoding)
+        except UnicodeDecodeError:
+            print(f"使用 {encoding} 解碼失敗，嘗試 utf-8 編碼")
+            df = pd.read_csv(csv_path, encoding='utf-8', errors='replace')
+        
+        full_text = df.to_string(index=False)
+        
+        # 計算 token 數量
+        estimated_tokens = len(full_text) / 2
+        print(f"大型CSV2資料總長度：{len(full_text)} 字元，估算約 {int(estimated_tokens)} tokens")
+        print(f"將進行分批處理，每批約 {batch_size/2} tokens")
+        
+        # 分割文本為多個較小的部分
+        chunks = []
+        for i in range(0, len(full_text), batch_size):
+            chunks.append(full_text[i:i + batch_size])
+        
+        print(f"共分割為 {len(chunks)} 個批次")
+        
+        all_personas = []
+        all_messages = []
+        
+        for i, chunk in enumerate(chunks):
+            print(f"處理第 {i+1}/{len(chunks)} 批次，大小約 {len(chunk) / 2} tokens")
             
-            # 添加批次信息到每個 persona
-            for p in chunk_personas:
-                p['batch_info'] = f"Batch {i+1}/{len(chunks)}"
+            # 為每個批次生成專屬提示
+            chunk_prompt = generate_prompt(chunk, is_csv=True)
             
-            # 收集結果
-            all_personas.extend(chunk_personas)
-            all_messages.extend(chunk_messages)
+            # 增加每個批次的重試次數和更長的等待時間
+            retry_count = 0
+            max_chunk_retries = 3
             
-            # 批次之間等待短暫時間，避免過度頻繁的 API 調用
-            print(f"批次 {i+1} 完成，生成了 {len(chunk_personas)} 個 personas")
-            if i < len(chunks) - 1:  # 如果不是最後一個批次
-                wait_time = 5  # 等待 5 秒
-                print(f"等待 {wait_time} 秒後處理下一批次...")
-                await asyncio.sleep(wait_time)
-                
-        except Exception as e:
-            print(f"批次 {i+1} 處理出錯: {e}")
-            # 記錄錯誤但繼續處理下一個批次
+            while retry_count <= max_chunk_retries:
+                try:
+                    # 處理此批次
+                    chunk_personas, chunk_messages = await _generate_personas(chunk_prompt)
+                    
+                    # 添加批次信息到每個 persona
+                    for p in chunk_personas:
+                        p['batch_info'] = f"Batch {i+1}/{len(chunks)}"
+                    
+                    # 收集結果
+                    all_personas.extend(chunk_personas)
+                    all_messages.extend(chunk_messages)
+                    
+                    # 批次之間等待較長時間，避免 API 限制
+                    print(f"批次 {i+1} 完成，生成了 {len(chunk_personas)} 個 personas")
+                    if i < len(chunks) - 1:  # 如果不是最後一個批次
+                        wait_time = 20  # 增加到 20 秒
+                        print(f"等待 {wait_time} 秒後處理下一批次...")
+                        await asyncio.sleep(wait_time)
+                    
+                    # 成功處理，跳出重試循環
+                    break
+                        
+                except Exception as e:
+                    retry_count += 1
+                    print(f"批次 {i+1} 處理出錯: {e}")
+                    
+                    if retry_count <= max_chunk_retries:
+                        # 使用指數退避策略
+                        wait_time = min(120, 20 * (2 ** (retry_count - 1)))
+                        print(f"將在 {wait_time} 秒後重試批次 {i+1} ({retry_count}/{max_chunk_retries})...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        print(f"批次 {i+1} 已達最大重試次數，繼續處理下一批次")
+        
+        # 如果至少有一些 personas 成功生成，則保存它們
+        if all_personas:
+            print(f"全部批次處理完成，共收集到 {len(all_personas)} 個 personas")
+            return _save_personas(all_personas, output_folder, "csv2", all_messages)
+        else:
+            # 在所有批次都失敗的情況下，返回空數據而不是拋出異常
+            print("所有批次處理都失敗，返回空數據")
+            return "", "", "", []
+            
+    except Exception as e:
+        print(f"CSV2 大檔案處理過程中出現錯誤：{str(e)}")
+        # 返回空結果以避免前端完全崩潰
+        return "", "", "", []
     
-    # 如果至少有一些 personas 成功生成，則保存它們
-    if all_personas:
-        print(f"全部批次處理完成，共收集到 {len(all_personas)} 個 personas")
-        return _save_personas(all_personas, output_folder, "csv2", all_messages)
-    else:
-        raise ValueError("所有批次處理都失敗，未能生成任何 persona")
-    
+@retry(
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential(multiplier=1, min=MIN_WAIT, max=MAX_WAIT),
+    retry=retry_if_exception_type((RateLimitError, RuntimeError, asyncio.TimeoutError))
+)
 async def _generate_personas(prompt):
-    """具有更強大重試機制的 persona 生成函數"""
-    max_retries = 5
-    retry_count = 0
-    
-    while True:
+    """使用 tenacity 庫增強重試機制的 persona 生成函數"""
+    try:
+        # 設置較長的超時時間
+        timeout = 60  # 60 秒超時
+        
+        # 創建模型客戶端
+        model_client = OpenAIChatCompletionClient(
+            model=GEMINI_MODEL, 
+            api_key=os.getenv("Gemini_api"),
+            timeout=timeout
+        )
+        
+        # 創建聊天實例
+        chat = RoundRobinGroupChat(
+            [AssistantAgent("gen", model_client)],
+            termination_condition=TextMentionTermination("TERMINATE")
+        )
+
+        personas = []
+        messages = []
+
         try:
-            model_client = OpenAIChatCompletionClient(model=GEMINI_MODEL, api_key=os.getenv("Gemini_api"))
-            chat = RoundRobinGroupChat([AssistantAgent("gen", model_client)], 
-                                      termination_condition=TextMentionTermination("TERMINATE"))
-
-            personas = []
-            messages = []
-
-            async for event in chat.run_stream(task=prompt):
-                if isinstance(event, TextMessage):
-                    messages.append({
-                        "source": event.source,
-                        "content": event.content,
-                        "type": event.type,
-                        "prompt_tokens": event.models_usage.prompt_tokens if event.models_usage else None,
-                        "completion_tokens": event.models_usage.completion_tokens if event.models_usage else None
-                    })
-                    blocks = re.findall(r"```json\n(.*?)\n```", event.content, re.DOTALL)
-                    for block in blocks:
-                        try:
-                            obj = json.loads(block)
-                            if isinstance(obj, dict):
-                                personas.append(obj)
-                            elif isinstance(obj, list):
-                                personas.extend(obj)
-                        except:
-                            pass
+            # 設置超時
+            async def run_with_timeout():
+                async for event in chat.run_stream(task=prompt):
+                    if isinstance(event, TextMessage):
+                        messages.append({
+                            "source": event.source,
+                            "content": event.content,
+                            "type": event.type,
+                            "prompt_tokens": event.models_usage.prompt_tokens if event.models_usage else None,
+                            "completion_tokens": event.models_usage.completion_tokens if event.models_usage else None
+                        })
+                        blocks = re.findall(r"```json\n(.*?)\n```", event.content, re.DOTALL)
+                        for block in blocks:
+                            try:
+                                obj = json.loads(block)
+                                if isinstance(obj, dict):
+                                    personas.append(obj)
+                                elif isinstance(obj, list):
+                                    personas.extend(obj)
+                            except json.JSONDecodeError as json_err:
+                                print(f"JSON 解析錯誤: {json_err}")
+                                # 嘗試修正 JSON 並再次解析
+                                try:
+                                    fixed_block = block.replace("'", '"').replace("\\", "\\\\")
+                                    obj = json.loads(fixed_block)
+                                    if isinstance(obj, dict):
+                                        personas.append(obj)
+                                    elif isinstance(obj, list):
+                                        personas.extend(obj)
+                                except:
+                                    print("修正 JSON 失敗，略過此區塊")
             
-            # 成功完成，返回結果
-            return personas, messages
-            
-        except Exception as e:
-            error_str = str(e)
-            
-            # 檢查是否為速率限制錯誤 (429)
-            if "429" in error_str and "RateLimitError" in error_str:
-                retry_count += 1
-                if retry_count >= max_retries:
-                    print(f"已重試 {max_retries} 次但仍然失敗，放棄重試。")
-                    raise
+            # 使用 asyncio.wait_for 設置超時
+            await asyncio.wait_for(run_with_timeout(), timeout=timeout)
                 
-                # 從錯誤信息中提取建議等待時間 - 使用多種模式嘗試匹配
-                retry_match = re.search(r"'retryDelay':\s*'(\d+)s'", error_str)
-                if not retry_match:
-                    retry_match = re.search(r'"retryDelay":\s*"(\d+)s"', error_str)
-                if not retry_match:
-                    retry_match = re.search(r'retryDelay["\']:\s*["\'](\d+)s["\']', error_str)
-
-                # 修复字符串与整数相加的错误
-                wait_time = int(retry_match.group(1)) + 1 if retry_match else 50
-                                
-                print(f"{retry_count}/{max_retries} - 遇到速率限制，等待 {wait_time} 秒後重試...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                # 其他錯誤，直接拋出
-                print(f"發生非速率限制錯誤: {e}")
-                raise
+        except asyncio.TimeoutError:
+            print(f"API 呼叫超時 ({timeout} 秒)")
+            raise
+            
+        # 成功完成，返回結果
+        if personas:
+            return personas, messages
+        else:
+            print("API 返回無效: 未找到有效的 persona 資料")
+            raise ValueError("未能生成有效的 persona 資料")
+        
+    except Exception as e:
+        error_str = str(e)
+        
+        # 檢查是否為速率限制錯誤 (429 或 503)
+        if "429" in error_str or "RateLimitError" in error_str or "overloaded" in error_str:
+            print(f"遇到 API 速率限制或過載錯誤: {error_str}")
+            # tenacity 會處理重試
+            raise
+        else:
+            # 其他錯誤，也讓 tenacity 嘗試重試
+            print(f"發生其他錯誤: {error_str}")
+            raise
             
 def _save_personas(personas, output_folder, prefix, messages):
     """保存處理後的 personas 到檔案系統並返回路徑"""
@@ -357,9 +471,6 @@ def _save_personas(personas, output_folder, prefix, messages):
 
     print(f"全部處理完成，共產生 {len(cleaned_personas)} 個 personas")
     return output_csv_path, zip_path, all_personas_path, cleaned_personas
-
-# 需要安装: pip install opencc-python-reimplemented
-# 添加到mcp_persona.py中
 
 import opencc
 

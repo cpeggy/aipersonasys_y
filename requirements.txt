@@ -1,15 +1,25 @@
-Flask>=2.2.5
-python-dotenv>=1.0.0
-Werkzeug>=2.2.3
-pandas>=1.5.3
-chardet>=5.2.0
-plotly>=5.15.0
-requests>=2.31.0
-openai>=0.27.13
-tiktoken>=0.6.4
-autogen-agentchat>=0.3.1
-autogen-ext>=0.3.1
-gunicorn>=20.1.0
+# Web framework
+Flask==2.2.5
+python-dotenv==1.0.0
 
-# Google Generative AI SDK 从 GitHub 安装（PyPI 尚未正式发布）
-git+https://github.com/googleapis/python-generative-ai.git@main#egg=google-generative-ai
+# CSV/MD 處理
+pandas==1.5.3
+chardet==5.1.0
+
+# HTTP requests
+requests==2.32.3
+
+# AI SDKs
+openai==0.27.0
+python-generative-ai==0.3.0         # google.generativeai 客戶端
+google-api-core>=2.16.0              # google-generative-ai 的底層依賴
+
+# Autogen framework (請確認 PyPI 上的名稱與版本)
+autogen-agentchat
+autogen-ext
+
+# 視覺化
+plotly==5.14.1
+
+# WSGI server
+gunicorn==20.1.0

@@ -15,6 +15,7 @@ from autogen_agentchat.conditions import TextMentionTermination
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 import time
 from openai import RateLimitError  # 確保導入這個
+import opencc
 
 GEMINI_MODEL = "gemini-2.0-flash"
 
@@ -241,7 +242,6 @@ async def process_large_csv2(csv_path, output_folder, batch_size=15000):
     else:
         raise ValueError("所有批次處理都失敗，未能生成任何 persona")
     
-    
 async def _generate_personas(prompt):
     """具有更強大重試機制的 persona 生成函數"""
     max_retries = 5
@@ -251,7 +251,7 @@ async def _generate_personas(prompt):
         try:
             model_client = OpenAIChatCompletionClient(model=GEMINI_MODEL, api_key=os.getenv("Gemini_api"))
             chat = RoundRobinGroupChat([AssistantAgent("gen", model_client)], 
-                                       termination_condition=TextMentionTermination("TERMINATE"))
+                                      termination_condition=TextMentionTermination("TERMINATE"))
 
             personas = []
             messages = []
@@ -296,6 +296,7 @@ async def _generate_personas(prompt):
                 if not retry_match:
                     retry_match = re.search(r'retryDelay["\']:\s*["\'](\d+)s["\']', error_str)
 
+                # 修复字符串与整数相加的错误
                 wait_time = int(retry_match.group(1)) + 1 if retry_match else 50
                                 
                 print(f"{retry_count}/{max_retries} - 遇到速率限制，等待 {wait_time} 秒後重試...")
@@ -305,7 +306,7 @@ async def _generate_personas(prompt):
                 # 其他錯誤，直接拋出
                 print(f"發生非速率限制錯誤: {e}")
                 raise
-
+            
 def _save_personas(personas, output_folder, prefix, messages):
     """保存處理後的 personas 到檔案系統並返回路徑"""
     # 確保輸出目錄存在
@@ -356,3 +357,39 @@ def _save_personas(personas, output_folder, prefix, messages):
 
     print(f"全部處理完成，共產生 {len(cleaned_personas)} 個 personas")
     return output_csv_path, zip_path, all_personas_path, cleaned_personas
+
+# 需要安装: pip install opencc-python-reimplemented
+# 添加到mcp_persona.py中
+
+import opencc
+
+def convert_to_traditional(text):
+    """将简体中文文本转换为繁体中文"""
+    if not text or not isinstance(text, str):
+        return text
+    converter = opencc.OpenCC('s2t')  # 简体到繁体转换器
+    return converter.convert(text)
+
+# 修改clean_persona函数以添加简繁转换
+def clean_persona(persona):
+    # 首先进行原有的清理
+    cleaned = {k: v for k, v in persona.items() if v and v != '...'}
+    
+    # 对每个字符串字段进行简繁转换
+    for key, value in cleaned.items():
+        if isinstance(value, str):
+            cleaned[key] = convert_to_traditional(value)
+        elif key == 'suggested_learning_resources' and isinstance(value, list):
+            cleaned[key] = []
+            for resource in value:
+                if isinstance(resource, dict):
+                    converted_resource = {}
+                    for k, v in resource.items():
+                        if isinstance(v, str) and v and v != '...':
+                            converted_resource[k] = convert_to_traditional(v)
+                        elif v and v != '...':
+                            converted_resource[k] = v
+                    if converted_resource:
+                        cleaned[key].append(converted_resource)
+    
+    return cleaned

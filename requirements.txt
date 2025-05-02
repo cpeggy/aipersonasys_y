@@ -13,3 +13,4 @@ nest-asyncio==1.5.8
 numpy==1.26.0
 google-api-core==2.15.0
 gunicorn==21.2.0
+tenacity==8.2.3

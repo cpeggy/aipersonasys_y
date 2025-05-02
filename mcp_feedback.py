@@ -7,19 +7,18 @@ import base64
 import traceback
 from io import BytesIO
 import google.generativeai as genai
-from openai import OpenAIError, ChatCompletion
+from openai import OpenAIError
 from google.api_core.exceptions import GoogleAPICallError, RetryError
 from google.api_core.exceptions import ResourceExhausted
-from autogen_agentchat.messages import TextMessage
 import plotly.graph_objects as go
 import time
 
 GEMINI_MODEL = "gemini-2.0-flash"
 GEMINI_API_KEY = os.getenv("Gemini_api")  # 注意這裡是正確讀.env
 
-# 在 mcp_feedback.py 中添加批次處理功能
+# 主程式：對多個 persona 執行回饋，並回傳 (feedback_list, avg_score, base64_chart_png)
 def run_mcp_feedback(selected_personas, marketing_copy):
-    """主程式：對多個 persona 執行回饋，並回傳 (feedback_list, avg_score, base64_chart_png)"""
+    """主程式：對多個 persona 執行回饋，並回傳 (feedback_data, avg_score, base64_chart_png)"""
     feedback_data = []
     scores = []
     
@@ -144,21 +143,6 @@ def get_retry_delay(error_msg):
         # 默認等待時間
         return 17  # 如果找不到建議等待時間，使用 15 秒作為安全值
 
-# 添加異步函數版本
-async def async_call_gemini_model(prompt, persona_id):
-    """異步呼叫 Gemini API"""
-    try:
-        # 使用執行緒池執行同步 API 呼叫
-        loop = asyncio.get_event_loop()
-        response_text = await loop.run_in_executor(None, lambda: sync_call_gemini_model(prompt))
-        
-        # 解析回應
-        return parse_feedback_response(response_text, persona_id)
-    except Exception as e:
-        print(f"Gemini API 異步呼叫失敗: {e}")
-        return None
-
-
 def parse_feedback_response(response_text, persona_id):
     """解析 Gemini 回應的 JSON"""
     try:
@@ -191,7 +175,7 @@ def parse_feedback_response(response_text, persona_id):
         print(f"解析失敗: {e}")
         raise  # 重新拋出異常，讓調用者能夠處理
 
-# 在 mcp_feedback.py 中修改 generate_chart 函數
+# 修改 generate_chart 函數
 def generate_chart(feedback_data, avg_score):
     """生成評分圖表，返回 base64 編碼的圖片"""
     if not feedback_data:
@@ -249,29 +233,6 @@ def generate_chart(feedback_data, avg_score):
     # 轉為 base64 字串
     img_bytes = fig.to_image(format="png", width=800, height=500)
     return base64.b64encode(img_bytes).decode('utf-8')
-
-
-def sync_call_gemini_model(prompt, max_retries=3):
-    """同步呼叫 Gemini API，帶有重試機制"""
-    retries = 0
-    while retries < max_retries:
-        try:
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel(GEMINI_MODEL)
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            error_msg = str(e)
-            retry_seconds = get_retry_delay(error_msg)
-            retries += 1
-            if retries < max_retries:
-                print(f"Gemini API 呼叫失敗 (嘗試 {retries}/{max_retries}): {e}")
-                print(f"API 建議等待 {retry_seconds-1} 秒，實際等待 {retry_seconds} 秒後重試...")
-                time.sleep(retry_seconds)
-            else:
-                print(f"Gemini API 呼叫失敗，已達最大重試次數: {e}")
-                raise  # 重新拋出異常，讓調用者知道失敗了
-    return None  # 這行實際上不會被執行到，因為最後一次失敗會拋出異常
 
 # ---------------
 # 可以 export 的函式

@@ -488,6 +488,8 @@ def get_status():
 # ============ 入口點 ============
 
 if __name__ == '__main__':
+    # 設置 Gunicorn 相關參數，方便在 Render 上部署
     port = int(os.environ.get('PORT', 5001))
     print(f"啟動 Persona 系統，監聽 {port} port...")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    # 確保應用綁定到 0.0.0.0 以接受所有連接
+    app.run(host='0.0.0.0', port=port)

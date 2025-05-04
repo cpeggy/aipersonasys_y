@@ -17,8 +17,12 @@ GEMINI_MODEL = "gemini-2.0-flash"
 GEMINI_API_KEY = os.getenv("Gemini_api")  # 注意這裡是正確讀.env
 
 # 主程式：對多個 persona 執行回饋，並回傳 (feedback_list, avg_score, base64_chart_png)
-def run_mcp_feedback(selected_personas, marketing_copy):
+def run_mcp_feedback(selected_personas, marketing_copy, progress_callback=None):
     """主程式：對多個 persona 執行回饋，並回傳 (feedback_data, avg_score, base64_chart_png)"""
+    api_key = os.getenv("Gemini_api")
+    if not api_key:
+        raise ValueError("缺少 Google API Key")
+    
     feedback_data = []
     scores = []
     
@@ -29,6 +33,9 @@ def run_mcp_feedback(selected_personas, marketing_copy):
         for i in range(0, len(selected_personas), batch_size)
     ]
     
+    total_personas = len(selected_personas)
+    processed_count = 0
+    
     for batch_index, batch in enumerate(persona_batches):
         print(f"處理批次 {batch_index+1}/{len(persona_batches)}, {len(batch)} 個 Personas")
         
@@ -36,6 +43,18 @@ def run_mcp_feedback(selected_personas, marketing_copy):
         batch_results = []
         for persona in batch:
             try:
+                processed_count += 1
+                
+                # 如果有進度回調函數，呼叫它
+                if progress_callback:
+                    # 只在批次完成時更新
+                    progress_callback(
+                        processed_count, 
+                        total_personas, 
+                        batch_index + 1,  # 當前批次
+                        len(persona_batches)
+                    )
+                
                 prompt = generate_prompt(persona, marketing_copy)
                 response_text = sync_call_gemini_model(prompt)
                 parsed = parse_feedback_response(response_text, persona_id=persona.get('persona_id', 'Unknown'))
@@ -55,6 +74,15 @@ def run_mcp_feedback(selected_personas, marketing_copy):
                     'detail_feedback': f'評估失敗: {str(e)}'
                 })
         
+        # 在批次完成後再次回調，確保進度更新
+        if progress_callback:
+            progress_callback(
+                processed_count, 
+                total_personas, 
+                batch_index + 1,  # 已完成的批次數
+                len(persona_batches)
+            )
+        
         # 將批次結果合併到總結果
         feedback_data.extend(batch_results)
         scores.extend([item.get('score', 0) for item in batch_results if item.get('score', 0) > 0])
@@ -64,7 +92,7 @@ def run_mcp_feedback(selected_personas, marketing_copy):
             wait_time = 20  # 增加到 20 秒
             print(f"等待 {wait_time} 秒後處理下一批次...")
             time.sleep(wait_time)
-    
+        
     # 確保至少有一個有效分數
     if not scores:
         scores = [0]
@@ -111,12 +139,16 @@ def generate_prompt(persona, marketing_copy):
 """
 
 # 改為同步函數，供 call_gemini_model 使用
-def sync_call_gemini_model(prompt, max_retries=3, retry_delay=5):
+def sync_call_gemini_model(prompt, max_retries=5):
     """同步呼叫 Gemini API，帶有重試機制"""
+    api_key = os.getenv("Gemini_api")
+    if not api_key:
+        raise ValueError("缺少 Google API Key")
+    
     retries = 0
     while retries < max_retries:
         try:
-            genai.configure(api_key=GEMINI_API_KEY)
+            genai.configure(api_key=api_key)
             model = genai.GenerativeModel(GEMINI_MODEL)
             response = model.generate_content(prompt)
             return response.text
@@ -188,23 +220,35 @@ def generate_chart(feedback_data, avg_score):
     labels = [f"Persona {item['persona_id']}" for item in feedback_data]
     scores = [item['score'] for item in feedback_data]
     
+    # 使用新的顏色方案
+    colors = []
+    for s in scores:
+        if s >= 8:
+            colors.append('#E36E6C')  # 高分使用紅色系 (原本是綠色)
+        elif s >= 6:
+            colors.append('#4E374C')  # 中高分使用深色系 (原本是藍色)
+        elif s >= 4:
+            colors.append('#F7C375')  # 中低分使用橙色系 (原本是橙色)
+        else:
+            colors.append('#E9DCCB')  # 低分使用淺色系 (原本是紅色)
+    
     # 創建長條圖
     fig = go.Figure(go.Bar(
         x=labels,
         y=scores,
-        marker_color=['green' if s >= 8 else 'blue' if s >= 6 else 'orange' if s >= 4 else 'red' for s in scores],
+        marker_color=colors,
         text=scores,
         textposition='auto',
     ))
     
-    # 添加平均線
+    # 添加平均線 - 使用深色系顏色
     fig.add_shape(
         type="line",
         x0=-0.5,
         x1=len(labels) - 0.5,
         y0=avg_score,
         y1=avg_score,
-        line=dict(color="red", width=2, dash="dash"),
+        line=dict(color='#4E374C', width=2, dash="dash"),  # 改用深色系
     )
     
     # 添加註解
@@ -214,6 +258,9 @@ def generate_chart(feedback_data, avg_score):
         text=f"平均: {avg_score:.1f}",
         showarrow=True,
         arrowhead=1,
+        bgcolor="#E9DCCB",  # 使用淺色系作為註解背景
+        bordercolor="#4E374C",  # 使用深色系作為邊框
+        borderwidth=1,
     )
     
     # 配置圖表 - 確保所有數值都能顯示
@@ -225,6 +272,8 @@ def generate_chart(feedback_data, avg_score):
         width=1000,  # 設置寬度以確保所有標籤可見
         height=800,  # 增加高度
         margin=dict(l=50, r=50, t=50, b=150),  # 增加底部邊距以顯示標籤
+        paper_bgcolor='#FFFFFF',  # 背景色保持白色
+        plot_bgcolor='#FFFFFF',  # 繪圖區背景色保持白色
     )
     
     # 調整 x 軸標籤方向，避免重疊

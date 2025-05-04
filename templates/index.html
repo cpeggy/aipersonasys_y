@@ -106,7 +106,7 @@
 </head>
 <body>
     <!-- 導航欄部分 -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top" style="background-color: #ABC0D7;">
         <div class="container">
             <a class="navbar-brand" href="#"><i class="fas fa-users"></i> Persona 整合系統</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -123,7 +123,7 @@
                 </ul>
             </div>
             <!-- 小螢幕下顯示API Key設定按鈕 -->
-            <button class="btn btn-outline-light d-lg-none" id="toggle-api-sidebar">
+            <button class="btn btn-outline-light d-lg-none" id="toggle-api-sidebar" style="color: #475B71; border-color: #475B71;">
                 <i class="fas fa-key"></i> API Key
             </button>
         </div>
@@ -220,6 +220,13 @@
                                                     <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
                                                 </div>
                                                 <p class="text-center mt-2">正在處理中，請稍候...</p>
+                                                <!-- CSV 進度條 -->
+                                                <div id="csv-progress" class="progress mt-3 d-none">
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                        role="progressbar" 
+                                                        style="width: 0%">0%</div>
+                                                </div>
+                                                <div id="csv-progress-text" class="text-muted small mt-1"></div>
                                             </div>
 
                                             <div id="csv2-result" class="mt-3 d-none">
@@ -338,6 +345,11 @@
                                     <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
                                 </div>
                                 <p class="text-center mt-2">正在評估中，請稍候...</p>
+                                <!-- 評估進度條 -->
+                                <!-- 評估進度區域 -->
+                                <div id="feedback-progress" class="mt-4 d-none">
+                                    <!-- JavaScript 會動態創建進度條內容 -->
+                                </div>
                             </div>
 
                             <!-- 評估結果區域 -->
@@ -393,8 +405,9 @@
         </div>
     </div>
 
-    <footer class="footer mt-auto py-3 bg-light">
-        <div class="container text-center">
+    <!-- 修改後的 footer 代碼 -->
+    <footer class="footer mt-auto py-3" style="width: 100vw; margin: 0; left: 0; right: 0; position: relative; max-width: none; background-color: #f5f5dc;">
+        <div class="text-center">
             <span class="text-muted">© 2025 Persona 整合系統</span>
         </div>
     </footer>

@@ -1,20 +1,55 @@
+/* 定義色彩變數 */
+:root {
+    --primary-color: #ABC0D7;        /* 明るめのグレイッシュブルー - 主色 */
+    --secondary-color: #EFECDF;      /* 淡いグレーイエロー - 副色 */
+    --text-color: #475B71;           /* ダークなネイビーブルー - 文字色 */
+    --neutral-gray: #787979;         /* 中性灰 */
+    
+    /* 功能性顏色 - 調整過的紅黃綠 */
+    --success-color: #7FB069;        /* 柔和的綠色 */
+    --warning-color: #E6AA68;        /* 柔和的橘黃色 */
+    --danger-color: #CA6B66;         /* 柔和的紅色 */
+    --info-color: #98B9DC;           /* 柔和的藍色 */
+    
+    /* 背景色 */
+    --bg-white: #FFFFFF;
+    --bg-light: #F8F9FA;
+    --bg-gray: #EFECDF;              /* 使用副色作為灰底 */
+}
+
 /* Main Styles */
 body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    background-color: #f8f9fa;
+    background-color: var(--bg-light);
+    color: var(--text-color);
 }
 
-.container-fluid {
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
+/* Navigation */
+.navbar {
+    background-color: var(--primary-color) !important;
 }
 
-.container {
-    flex: 1;
+.navbar-brand, .navbar-nav .nav-link {
+    color: var(--text-color) !important;
+}
+
+.navbar-nav .nav-link.active {
+    color: var(--text-color) !important;
+    font-weight: bold;
+}
+
+.navbar-nav .nav-link:hover {
+    color: var(--text-color) !important;
+    opacity: 0.8;
+}
+
+/* API Key Sidebar */
+.api-key-sidebar {
+    background-color: var(--secondary-color);
+    border-right: 1px solid var(--neutral-gray);
+    color: var(--text-color);
 }
 
 /* Card Styles */
@@ -22,79 +57,319 @@ body {
     border-radius: 0.5rem;
     overflow: hidden;
     transition: all 0.3s ease;
+    border: 1px solid var(--neutral-gray);
 }
 
 .card:hover {
-    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+    box-shadow: 0 .5rem 1rem rgba(71, 91, 113, 0.15);
 }
 
 .card-header {
-    background-color: #f8f9fa;
-    border-bottom: 1px solid rgba(0,0,0,.125);
+    background-color: var(--secondary-color);
+    border-bottom: 1px solid var(--neutral-gray);
+    color: var(--text-color);
+}
+
+.bg-light {
+    background-color: var(--secondary-color) !important;
 }
 
 /* Form Styles */
 .form-control {
     border-radius: 0.25rem;
+    border-color: var(--neutral-gray);
+    color: var(--text-color);
 }
 
 .form-control:focus {
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(171, 192, 215, 0.25);
 }
 
 /* Button Styles */
-.btn {
-    border-radius: 0.25rem;
-    transition: all 0.3s;
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--text-color);
 }
 
-/* Persona 卡片樣式 */
+.btn-primary:hover {
+    background-color: #97AFC8;
+    border-color: #97AFC8;
+    color: var(--text-color);
+}
+
+.btn-secondary {
+    background-color: var(--neutral-gray);
+    border-color: var(--neutral-gray);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #696A6A;
+    border-color: #696A6A;
+}
+
+.btn-success {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.btn-success:hover {
+    background-color: #6D9B5D;
+    border-color: #6D9B5D;
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+    border-color: var(--danger-color);
+}
+
+.btn-danger:hover {
+    background-color: #B85B56;
+    border-color: #B85B56;
+}
+
+.btn-warning {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+    color: var(--text-color);
+}
+
+.btn-warning:hover {
+    background-color: #D69A58;
+    border-color: #D69A58;
+    color: var(--text-color);
+}
+
+/* Alert Styles */
+.alert-info {
+    background-color: var(--info-color);
+    border-color: var(--info-color);
+    color: var(--text-color);
+}
+
+.alert-success {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+    color: white;
+}
+
+.alert-warning {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+    color: var(--text-color);
+}
+
+.alert-danger {
+    background-color: var(--danger-color);
+    border-color: var(--danger-color);
+    color: white;
+}
+
+/* Persona Card Styles */
 .persona-card {
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--neutral-gray);
     border-radius: 0.25rem;
     margin-bottom: 15px;
     cursor: pointer;
     transition: all 0.2s;
+    background-color: var(--bg-white);
 }
 
 .persona-card:hover {
-    border-color: #adb5bd;
-    background-color: #f8f9fa;
+    border-color: var(--primary-color);
+    background-color: var(--bg-light);
 }
 
 .persona-card.selected {
-    border-color: #0d6efd;
-    background-color: #e7f0ff;
+    border-color: var(--primary-color);
+    background-color: rgba(171, 192, 215, 0.2);
 }
 
 .persona-title {
     font-weight: bold;
     margin-bottom: 5px;
+    color: var(--text-color);
 }
 
 .persona-description {
     font-size: 0.875rem;
-    color: #6c757d;
-}
-
-/* Chart Container */
-.chart-container {
-    margin: 1.5rem 0;
+    color: var(--neutral-gray);
 }
 
 /* Feedback Results */
-.reason-item {
-    margin-bottom: 0.5rem;
-    padding: 0.5rem;
-    border-radius: 0.25rem;
-    background-color: #f8f9fa;
+.border-success {
+    border-color: var(--success-color) !important;
 }
 
-/* Footer */
+.border-danger {
+    border-color: var(--danger-color) !important;
+}
+
+.border-warning {
+    border-color: var(--warning-color) !important;
+}
+
+.border-primary {
+    border-color: var(--primary-color) !important;
+}
+
+/* Score Badges */
+.bg-success {
+    background-color: var(--success-color) !important;
+}
+
+.bg-danger {
+    background-color: var(--danger-color) !important;
+}
+
+.bg-warning {
+    background-color: var(--warning-color) !important;
+    color: var(--text-color) !important;
+}
+
+.bg-primary {
+    background-color: var(--primary-color) !important;
+    color: var(--text-color) !important;
+}
+
+/* 確保 footer 完全滿版的 CSS */
 .footer {
-    margin-top: auto;
-    border-top: 1px solid #dee2e6;
+    background-color:--secondary-color,
+    position: fixed;
+    bottom: 0;
+    left:   0;
+    width:  100%;
+    z-index: 1001;
+  }
+  
+
+/* 桌面：和主內容對齊 */
+@media (min-width: 768px) {
+    .footer {
+      margin-left: 250px;                /* 推開左側欄 */
+      width: calc(100% - 250px);         /* 剩餘寬度 */
+    }
+  }
+  
+  /* 行動：撐滿整個螢幕 */
+  @media (max-width: 767px) {
+    .footer {
+      margin-left: 0;
+      width: 100%;
+    }
+  }
+
+/* Progress Bar */
+.progress-bar {
+    background-color: var(--primary-color);
+}
+
+/* Toast Messages */
+.toast {
+    border: none;
+}
+
+.toast-header {
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.toast-body {
+    padding: 0.75rem;
+}
+
+/* Warning Toast */
+.bg-warning {
+    background-color: var(--warning-color) !important;
+}
+
+.bg-warning.text-dark {
+    color: var(--text-color) !important;
+}
+
+/* Close Button */
+.btn-close {
+    color: var(--text-color);
+    opacity: 0.8;
+}
+
+.btn-close:hover {
+    opacity: 1;
+}
+
+.btn-close-white {
+    filter: brightness(0) invert(1);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-light);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--neutral-gray);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-color);
+}
+
+/* Form Labels */
+.form-label {
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+/* Custom Checkbox */
+.form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Text Colors */
+.text-muted {
+    color: var(--neutral-gray) !important;
+}
+
+/* Links */
+a {
+    color: var(--primary-color);
+}
+
+a:hover {
+    color: var(--text-color);
+}
+
+/* Tables */
+.table {
+    color: var(--text-color);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: var(--bg-light);
+}
+
+/* Modals */
+.modal-content {
+    background-color: var(--bg-white);
+    color: var(--text-color);
+}
+
+.modal-header {
+    background-color: var(--secondary-color);
+    border-bottom: 1px solid var(--neutral-gray);
+}
+
+.modal-footer {
+    background-color: var(--secondary-color);
+    border-top: 1px solid var(--neutral-gray);
 }
 
 /* Animation for loading */
@@ -122,4 +397,68 @@ body {
         padding-right: 0.5rem;
         padding-left: 0.5rem;
     }
+}
+
+/* 分段進度條容器 */
+.segmented-progress-wrapper {
+    background: #e8ecf1;
+    border: 2px solid #b8c3d1;
+    border-radius: 16px;
+    padding: 4px;
+    position: relative;
+    display: flex;
+    gap: 3px;
+}
+
+/* 進度條分段 */
+.progress-segment {
+    flex: 1;
+    height: 24px;
+    background-color: #d8e2ec;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    transition: background-color 0.3s ease;
+}
+
+/* 已填充的分段 */
+.progress-segment.filled {
+    background-color: var(--primary-color);
+}
+
+/* 正在處理的分段 - 使用漸變效果 */
+.progress-segment.processing {
+    background: linear-gradient(
+        90deg,
+        #d8e2ec 0%,
+        var(--primary-color) 50%,
+        #d8e2ec 100%
+    );
+    background-size: 200% 100%;
+    animation: processing-animation 2s linear infinite;
+}
+
+@keyframes processing-animation {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* 進度文字 */
+.progress-text {
+    text-align: center;
+    margin-top: 8px;
+    color: var(--text-color);
+    font-size: 0.875rem;
+}
+
+/* 批次處理文字 */
+.batch-info {
+    font-size: 0.75rem;
+    color: var(--neutral-gray);
+    margin-top: 4px;
+    text-align: center;
 }

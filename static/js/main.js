@@ -35,10 +35,26 @@ $(document).ready(function() {
 // ====== API Key 管理 ======
 function initializeAPIKey() {
     // 從 localStorage 讀取 API Key
-    const savedApiKey = localStorage.getItem('geminiApiKey');
+    const savedApiKey = localStorage.getItem('geminiApiKey'); // 統一使用 geminiApiKey
     if (savedApiKey) {
         $('#gemini-key').val(savedApiKey);
+        console.log('已從 localStorage 載入 API Key');
     }
+}
+
+// 設置 API Key 相關事件
+function setupAPIKeyEvents() {
+    // 儲存 API Key
+    $('#save-api-key').on('click', function() {
+        const apiKey = $('#gemini-key').val().trim();
+        if (apiKey) {
+            localStorage.setItem('geminiApiKey', apiKey); // 使用相同的 key
+            showToast('API Key 已儲存成功！', 'success');
+            console.log('API Key 已儲存到 localStorage');
+        } else {
+            showToast('請輸入有效的 API Key', 'warning');
+        }
+    });
 }
 
 // ====== 事件監聽器設置 ======
@@ -224,20 +240,41 @@ function showToast(message, type = 'info') {
     // 生成唯一 ID
     const toastId = 'toast-' + Date.now();
     
-    // 設置背景色
-    let bgClass = 'bg-info';
-    if (type === 'success') bgClass = 'bg-success';
-    if (type === 'warning') bgClass = 'bg-warning';
-    if (type === 'danger') bgClass = 'bg-danger';
+    // 設置樣式
+    let headerClass = '';
+    let bodyClass = '';
+    let textClass = '';
+    let btnCloseClass = 'btn-close';
+    
+    if (type === 'success') {
+        headerClass = 'bg-success text-white';
+        bodyClass = '';
+        textClass = '';
+        btnCloseClass = 'btn-close-white';
+    } else if (type === 'warning') {
+        headerClass = 'bg-warning text-dark';
+        bodyClass = 'bg-white';
+        textClass = 'text-dark';
+    } else if (type === 'danger') {
+        headerClass = 'bg-danger text-white';
+        bodyClass = '';
+        textClass = '';
+        btnCloseClass = 'btn-close-white';
+    } else if (type === 'info') {
+        headerClass = 'bg-info text-white';
+        bodyClass = '';
+        textClass = '';
+        btnCloseClass = 'btn-close-white';
+    }
     
     // 創建 toast HTML
     const toastHtml = `
     <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header ${bgClass} text-white">
+      <div class="toast-header ${headerClass}">
         <strong class="me-auto">系統訊息</strong>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        <button type="button" class="${btnCloseClass}" data-bs-dismiss="toast" aria-label="Close"></button>
       </div>
-      <div class="toast-body">
+      <div class="toast-body ${bodyClass} ${textClass}">
         ${message}
       </div>
     </div>
@@ -516,8 +553,6 @@ function processFeedbackForm() {
             if (id) {
                 selectedIds.push(id);
                 console.log(`已選擇 Persona: ${id}`);
-            } else {
-                console.warn(`警告: 發現沒有有效ID的選擇項目`, this);
             }
         });
         
@@ -542,71 +577,141 @@ function processFeedbackForm() {
         $('#feedback-result').addClass('d-none');
         $('#feedback-submit').prop('disabled', true);
         
-        // 生成唯一請求ID，用於日誌追蹤
+        // 創建分段進度條 - 每個批次（2個Persona）一個分段
+        const batchSize = 2;
+        const totalBatches = Math.ceil(selectedIds.length / batchSize);
+        createSegmentedProgressBar('feedback-progress', totalBatches);
+        
+        // 初始化進度 - 從0開始
+        updateSegmentedProgress('feedback-progress', 0, totalBatches, 
+            `準備評估 ${selectedIds.length} 個 Persona...`, '');
+        
+        // 生成唯一請求ID
         const requestId = Date.now();
         console.log(`[${requestId}] 開始處理評估請求`);
         
-        // 發送AJAX請求
-        $.ajax({
-            url: '/process-feedback',
-            type: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({
-                selected_personas: selectedIds,
-                marketing_copy: marketingCopy,
-                api_key: apiKey,
-                request_id: requestId // 添加請求ID
-            }),
-            success: function(response) {
-                $('#feedback-progress').addClass('d-none');
-                $('#feedback-submit').prop('disabled', false);
-                
-                console.log(`[${requestId}] 評估回應:`, response);
-                
-                if (response.success) {
-                    // 顯示結果區域
-                    $('#feedback-result').removeClass('d-none');
-                    
-                    // 檢查是否所有 personas 都有評估結果
-                    if(response.feedback.length < selectedIds.length) {
-                        showToast(`注意：僅收到 ${response.feedback.length}/${selectedIds.length} 個 Persona 的評估結果`, 'warning');
-                        console.warn("部分 Persona 評估結果缺失:", 
-                            selectedIds.filter(id => !response.feedback.some(item => item.persona_id === id)));
+        // 發送請求並處理串流回應
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/process-feedback', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'text/event-stream');
+        
+        // 用於儲存累積的回應和上次處理的位置
+        let lastProcessedPosition = 0;
+        
+        xhr.onprogress = function(e) {
+            const currentResponse = e.currentTarget.responseText;
+            const newData = currentResponse.substring(lastProcessedPosition);
+            lastProcessedPosition = currentResponse.length;
+
+            console.log('收到新數據:', newData);  // 調試用
+
+            const lines = newData.split('\n');
+            
+            lines.forEach(line => {
+            if (line.startsWith('data: ')) {
+                try {
+                    const dataStr = line.substring(6);
+                    if (dataStr.trim()) {
+                        const data = JSON.parse(dataStr);
+                        console.log('解析的數據:', data);  // 調試用
+                        
+                        if (data.type === 'progress') {
+                            // 更新進度條
+                            console.log('更新進度條:', data.batch_current, '/', data.batch_total);
+                            updateSegmentedProgress(
+                                'feedback-progress', 
+                                data.batch_current, 
+                                data.batch_total, 
+                                data.message, 
+                                data.batch_message
+                            );
+                            } else if (data.type === 'complete') {
+                            // 處理完成
+                            console.log('處理完成');
+                            $('#feedback-progress').addClass('d-none');
+                            $('#feedback-submit').prop('disabled', false);
+                            
+                            if (data.success) {
+                                // 顯示結果區域
+                                $('#feedback-result').removeClass('d-none');
+                                
+                                // 設置圖表
+                                if (data.chart) {
+                                    $('#score-chart').attr('src', 'data:image/png;base64,' + data.chart);
+                                } else {
+                                    $('#score-chart').html('<div class="alert alert-warning">無法生成圖表</div>');
+                                }
+                                
+                                // 處理其他結果數據
+                                processBuyReasons(data.feedback);
+                                generateFeedbackCards(data.feedback);
+                                
+                                window.feedbackData = data.feedback;
+                                window.marketingCopy = marketingCopy;
+                                
+                                setupFeedbackModal();
+                                showToast('評估完成！', 'success');
+                            } else {
+                                showToast('評估失敗: ' + (data.error || '未知錯誤'), 'danger');
+                            }
+                            
+                            resolve(data);
+                        } else if (data.type === 'error') {
+                            console.error('處理錯誤:', data.error);
+                            $('#feedback-progress').addClass('d-none');
+                            $('#feedback-submit').prop('disabled', false);
+                            showToast('處理反饋時出錯: ' + data.error, 'danger');
+                            reject(new Error(data.error));
+                        }
+                        }
+                    } catch (error) {
+                        console.error('解析串流數據錯誤:', error, 'Line:', line);
                     }
-                    
-                    // 設置圖表
-                    if (response.chart) {
-                        $('#score-chart').attr('src', 'data:image/png;base64,' + response.chart);
-                    } else {
-                        $('#score-chart').html('<div class="alert alert-warning">無法生成圖表</div>');
-                    }
-                    
-                    // 處理購買理由
-                    processBuyReasons(response.feedback);
-                    
-                    // 生成個別persona反饋卡片
-                    generateFeedbackCards(response.feedback);
-                    
-                    // 儲存反饋數據用於下載
-                    window.feedbackData = response.feedback;
-                    window.marketingCopy = marketingCopy;
-                    
-                    // 確保有完整評估的對話框
-                    setupFeedbackModal();
-                } else {
-                    showToast('評估失敗: ' + (response.error || '未知錯誤'), 'danger');
                 }
-                
-                resolve(response);
-            },
-            error: function(error) {
+            });
+        };
+        
+        xhr.onload = function() {
+            if (xhr.status !== 200) {
                 $('#feedback-progress').addClass('d-none');
                 $('#feedback-submit').prop('disabled', false);
-                showToast('處理反饋時出錯: ' + (error.responseJSON ? error.responseJSON.error : '未知錯誤'), 'danger');
-                console.error(`[${requestId}] Error:`, error);
-                reject(error);
+                let errorMessage = '處理反饋時出錯';
+                try {
+                    const errorData = JSON.parse(xhr.responseText);
+                    errorMessage += ': ' + errorData.error;
+                } catch (e) {
+                    errorMessage += ': ' + xhr.statusText;
+                }
+                showToast(errorMessage, 'danger');
+                reject(new Error(errorMessage));
             }
-        });
+        };
+        
+        xhr.onerror = function() {
+            $('#feedback-progress').addClass('d-none');
+            $('#feedback-submit').prop('disabled', false);
+            showToast('網絡錯誤', 'danger');
+            reject(new Error('網絡錯誤'));
+        };
+        
+        xhr.ontimeout = function() {
+            $('#feedback-progress').addClass('d-none');
+            $('#feedback-submit').prop('disabled', false);
+            showToast('請求超時', 'danger');
+            reject(new Error('請求超時'));
+        };
+        
+        // 設置超時時間
+        xhr.timeout = 600000; // 10分鐘
+        
+        // 發送請求數據
+        xhr.send(JSON.stringify({
+            selected_personas: selectedIds,
+            marketing_copy: marketingCopy,
+            api_key: apiKey,
+            request_id: requestId
+        }));
     });
 }
 
@@ -972,4 +1077,120 @@ function drawScoreChart(feedback, avgScore) {
     };
 
     Plotly.newPlot('score-chart', [trace], layout);
+}
+
+// ====== 通用進度更新函數 ======
+function updateProgress(progressBarId, current, total, message = '') {
+    const progressBar = $(`#${progressBarId} .progress-bar`);
+    const percentage = Math.round((current / total) * 100);
+    
+    progressBar.css('width', percentage + '%');
+    progressBar.attr('aria-valuenow', percentage);
+    
+    // 如果有進度文字區域，更新文字
+    const progressText = $(`#${progressBarId}-text`);
+    if (progressText.length && message) {
+        progressText.text(message);
+    }
+}
+
+// ====== 創建分段進度條 ======
+function createSegmentedProgressBar(progressBarId, totalSegments) {
+    const container = $(`#${progressBarId}`);
+    container.empty();
+    
+    // 創建進度條外容器
+    const wrapper = $('<div>').addClass('segmented-progress-wrapper');
+    
+    // 創建分段
+    for (let i = 0; i < totalSegments; i++) {
+        const segment = $('<div>')
+            .addClass('progress-segment')
+            .attr('data-segment', i);
+        wrapper.append(segment);
+    }
+    
+    container.append(wrapper);
+    
+    // 添加進度文字區域
+    const progressText = $('<div>')
+        .addClass('progress-text')
+        .attr('id', `${progressBarId}-text`);
+    container.append(progressText);
+    
+    // 添加批次信息文字
+    const batchInfo = $('<div>')
+        .addClass('batch-info')
+        .attr('id', `${progressBarId}-batch`);
+    container.append(batchInfo);
+}
+
+// ====== 更新分段進度條 ======
+function updateSegmentedProgress(progressBarId, current, total, message = '', batchInfo = '') {
+    const segments = $(`#${progressBarId} .progress-segment`);
+    
+    // 確保 current 和 total 都有有效值
+    current = parseInt(current) || 0;
+    total = parseInt(total) || segments.length;
+    
+    console.log(`更新進度: current=${current}, total=${total}`);
+    
+    // 更新分段狀態 - 填充已完成的批次
+    segments.each(function(index) {
+        const segment = $(this);
+        
+        if (index < current) {
+            // 已完成的分段 - 填滿
+            segment.removeClass('processing').addClass('filled');
+        } else if (index === current && current < total) {
+            // 當前正在處理的分段 - 顯示處理動畫
+            segment.removeClass('filled').addClass('processing');
+        } else {
+            // 還未處理的分段 - 保持空白
+            segment.removeClass('filled processing');
+        }
+    });
+    
+    // 更新進度文字
+    const progressText = $(`#${progressBarId}-text`);
+    if (progressText.length && message) {
+        progressText.text(message);
+    }
+    
+    // 更新批次信息
+    const batchInfoElement = $(`#${progressBarId}-batch`);
+    if (batchInfoElement.length && batchInfo) {
+        batchInfoElement.text(batchInfo);
+    }
+}
+
+// ====== 測試進度條功能 ======
+function testProgressBar() {
+    createSegmentedProgressBar('feedback-progress', 7);
+    let current = 0;
+    const total = 7;
+    
+    const interval = setInterval(() => {
+        current++;
+        updateSegmentedProgress(
+            'feedback-progress', 
+            current, 
+            total, 
+            `處理批次 ${current}/${total}`, 
+            `正在評估 Persona...`
+        );
+        
+        if (current >= total) {
+            clearInterval(interval);
+            setTimeout(() => {
+                updateSegmentedProgress(
+                    'feedback-progress', 
+                    total, 
+                    total, 
+                    '評估完成！', 
+                    '所有批次已處理完成'
+                );
+            }, 1000);
+        }
+    }, 2000);
 }

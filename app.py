@@ -3,16 +3,21 @@ import asyncio
 import json
 import datetime
 import traceback
-from flask import Flask, request, jsonify, render_template, send_file
-from dotenv import load_dotenv
+from flask import Flask, request, jsonify, render_template, send_file, Response, stream_with_context
 from werkzeug.utils import secure_filename
-from mcp_feedback import run_mcp_feedback
 from mcp_persona import process_csv, process_csv2, process_md
+from mcp_persona import process_large_csv
+from mcp_persona import process_large_csv2
+from mcp_feedback import run_mcp_feedback, generate_chart
+import inspect
+
+from queue import Queue
+import threading
 import zipfile
+import csv
+import io
 
-from flask import Flask
 app = Flask(__name__)
-
 
 # 初始化 Flask
 app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -23,9 +28,6 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 # 建立必要資料夾
 for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER'], os.path.join(app.config['OUTPUT_FOLDER'], "personas")]:
     os.makedirs(folder, exist_ok=True)
-
-# 載入 .env
-load_dotenv()
 
 # ============ 路由設定 ============
 
@@ -43,25 +45,27 @@ def handle_csv_process():
         return jsonify({'error': 'No selected file'}), 400
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
+    
+    # 從請求中獲取 API Key
+    api_key = request.form.get('api_key')
+    if not api_key:
+        return jsonify({"error": "缺少 API Key"}), 400
 
     try:
-        # 嘗試讀取文件大小
         file_size = os.path.getsize(filepath)
-        estimated_tokens = file_size / 6  # 粗略估算 token 數量
+        estimated_tokens = file_size / 6
         
-        # 對大文件使用批次處理
-        large_file_threshold = 40000  # 約 40K tokens
+        large_file_threshold = 40000
         
         if estimated_tokens > large_file_threshold:
             print(f"檢測到大型 CSV 文件，估算約 {int(estimated_tokens)} tokens，將使用批次處理")
-            from mcp_persona import process_large_csv
             output_csv_path, zip_path, all_personas_path, all_personas = asyncio.run(
-                process_large_csv(filepath, app.config['OUTPUT_FOLDER'])
+                process_large_csv(filepath, app.config['OUTPUT_FOLDER'], api_key=api_key)  # 添加 api_key 參數
             )
         else:
             print(f"檢測到標準大小 CSV 文件，估算約 {int(estimated_tokens)} tokens，使用常規處理")
             output_csv_path, zip_path, all_personas_path, all_personas = asyncio.run(
-                process_csv(filepath, app.config['OUTPUT_FOLDER'])
+                process_csv(filepath, app.config['OUTPUT_FOLDER'], api_key=api_key)  # 添加 api_key 參數
             )
         
         # 確保路徑只保留檔名部分，不包含完整路徑
@@ -97,7 +101,7 @@ def handle_csv2_process():
         return jsonify({'error': '沒有檔案部分'}), 400
     
     # 獲取 API Key 並設置環境變數
-    api_key = request.form.get('api_key', '')
+    api_key = request.form.get('api_key', '')  
     if not api_key:
         return jsonify({'error': '未提供 Gemini API Key'}), 400
     
@@ -125,7 +129,6 @@ def handle_csv2_process():
             # 根據檔案大小選擇處理方法
             if estimated_tokens > large_file_threshold:
                 print(f"檢測到大型 CSV2 檔案，估算約 {int(estimated_tokens)} tokens，將使用批次處理")
-                from mcp_persona import process_large_csv2
                 _, _, _, file_personas = asyncio.run(
                     process_large_csv2(filepath, app.config['OUTPUT_FOLDER'])
                 )
@@ -186,6 +189,11 @@ def handle_md_process():
     if not files or files[0].filename == '':
         return jsonify({'error': 'No selected files'}), 400
     
+    # 從請求中獲取 API Key
+    api_key = request.form.get('api_key')
+    if not api_key:
+        return jsonify({"error": "缺少 API Key"}), 400
+    
     md_paths = []
     for file in files:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
@@ -193,8 +201,9 @@ def handle_md_process():
         md_paths.append(filepath)
 
     try:
-        output_md_path, zip_path, all_personas_path, all_personas = asyncio.run(process_md(md_paths, app.config['OUTPUT_FOLDER']))
-        
+        output_md_path, zip_path, all_personas_path, all_personas = asyncio.run(
+            process_md(md_paths, app.config['OUTPUT_FOLDER'], api_key=api_key)  # 添加 api_key 參數
+        )
         # 確保路徑只保留檔名部分，不包含完整路徑
         output_md_basename = os.path.basename(output_md_path)
         zip_basename = os.path.basename(zip_path)
@@ -219,7 +228,13 @@ def handle_feedback():
         data = request.get_json()
         selected_ids = data.get('selected_personas', [])
         marketing_copy = data.get('marketing_copy', '')
+        api_key = data.get('api_key')
         request_id = data.get('request_id', datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+        
+        if not api_key:
+            return jsonify({'error': '缺少 API Key'}), 400
+        
+        os.environ["Gemini_api"] = api_key
         
         print(f"[{request_id}] 收到評估請求: {len(selected_ids)} 個 Personas, 文案長度 {len(marketing_copy)} 字元")
         print(f"[{request_id}] 選擇的 Persona IDs: {selected_ids}")
@@ -248,11 +263,6 @@ def handle_feedback():
         found_ids = [str(p.get('persona_id')) for p in all_personas]
         print(f"[{request_id}] 系統中找到的所有 Persona IDs: {found_ids}")
         
-        # 檢查哪些選擇的 ID 不存在
-        missing_ids = [id for id in selected_ids if id not in found_ids]
-        if missing_ids:
-            print(f"[{request_id}] 警告: 找不到以下 {len(missing_ids)} 個選擇的 Persona IDs: {missing_ids}")
-        
         # 過濾出被選到的 personas
         selected_personas = [p for p in all_personas if str(p.get('persona_id')) in selected_ids]
 
@@ -261,47 +271,144 @@ def handle_feedback():
 
         print(f"[{request_id}] 準備呼叫評估函數，選擇了 {len(selected_personas)} 個 Personas")
         
-        try:
-            # 導入並調用 run_mcp_feedback 函數
-            from mcp_feedback import run_mcp_feedback
+        # 判斷是否要使用串流回應
+        if request.headers.get('Accept') == 'text/event-stream':
+            def generate():
+                try:
+                    # 使用隊列來收集進度消息
+                    progress_queue = Queue()
+                    
+                    # 創建進度回調函數
+                    def progress_callback(current, total, batch_current, batch_total):
+                        # 計算已完成的批次數
+                        completed_batches = 0
+                        if current > 0:
+                            completed_batches = (current - 1) // 2  # 每2個完成一個批次
+                            if current % 2 == 0:  # 當完成偶數個時，當前批次完成
+                                completed_batches += 1
+                        
+                        progress_data = {
+                            'type': 'progress',
+                            'current': current,
+                            'total': total,
+                            'batch_current': completed_batches,
+                            'batch_total': batch_total,
+                            'message': f'正在評估 {current}/{total} 個 Persona...',
+                            'batch_message': f'已完成批次 {completed_batches}/{batch_total}'
+                        }
+                        
+                        print(f"[進度更新] current={current}, completed_batches={completed_batches}")
+                        
+                        msg = f"data: {json.dumps(progress_data)}\n\n"
+                        progress_queue.put(msg)
+                    
+                    result_container = []
+                    error_container = []
+                    
+                    def run_feedback():
+                        try:
+                            result = run_mcp_feedback(selected_personas, marketing_copy, progress_callback)
+                            result_container.append(result)
+                        except Exception as e:
+                            error_container.append(e)
+                    
+                    # 啟動處理線程
+                    feedback_thread = threading.Thread(target=run_feedback)
+                    feedback_thread.start()
+                    
+                    # 串流輸出進度消息
+                    while feedback_thread.is_alive() or not progress_queue.empty():
+                        try:
+                            msg = progress_queue.get(timeout=0.1)
+                            yield msg
+                        except:
+                            continue
+                    
+                    # 等待線程完成
+                    feedback_thread.join()
+                    
+                    # 檢查是否有錯誤
+                    if error_container:
+                        error_data = {
+                            'type': 'error',
+                            'error': str(error_container[0])
+                        }
+                        yield f"data: {json.dumps(error_data)}\n\n"
+                        return
+                    
+                    # 處理結果
+                    if result_container:
+                        result = result_container[0]
+                        if isinstance(result, tuple) and len(result) == 3:
+                            feedbacks, avg_score, chart_img = result
+                        else:
+                            feedbacks = result
+                            avg_score = sum(item.get('score', 0) for item in feedbacks) / len(feedbacks) if feedbacks else 0
+                            chart_img = generate_chart(feedbacks, avg_score)
+                        
+                        # 發送完成消息
+                        complete_data = {
+                            'type': 'complete',
+                            'success': True,
+                            'feedback': feedbacks,
+                            'avg_score': avg_score,
+                            'chart': chart_img
+                        }
+                        yield f"data: {json.dumps(complete_data)}\n\n"
+                    
+                except Exception as e:
+                    error_data = {
+                        'type': 'error',
+                        'error': str(e)
+                    }
+                    yield f"data: {json.dumps(error_data)}\n\n"
             
-            # 根據 run_mcp_feedback 的類型選擇適當的調用方式
-            import inspect
-            if inspect.iscoroutinefunction(run_mcp_feedback):
-                # 如果是異步函數，使用 asyncio.run
-                print("檢測到 run_mcp_feedback 是異步函數，使用 asyncio.run")
-                result = asyncio.run(run_mcp_feedback(selected_personas, marketing_copy))
-            else:
-                # 如果是同步函數，直接調用
-                print("檢測到 run_mcp_feedback 是同步函數，直接調用")
-                result = run_mcp_feedback(selected_personas, marketing_copy)
+            return Response(
+                stream_with_context(generate()),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no',
+                }
+            )
+        else:
+            # 非串流處理
+            try:
+                # 根據 run_mcp_feedback 的類型選擇適當的調用方式
+                if inspect.iscoroutinefunction(run_mcp_feedback):
+                    # 如果是異步函數，使用 asyncio.run
+                    print("檢測到 run_mcp_feedback 是異步函數，使用 asyncio.run")
+                    result = asyncio.run(run_mcp_feedback(selected_personas, marketing_copy))
+                else:
+                    # 如果是同步函數，直接調用
+                    print("檢測到 run_mcp_feedback 是同步函數，直接調用")
+                    result = run_mcp_feedback(selected_personas, marketing_copy)
+                
+                print(f"評估成功，結果類型: {type(result)}")
+                
+                # 解析結果
+                if isinstance(result, tuple) and len(result) == 3:
+                    feedbacks, avg_score, chart_img = result
+                else:
+                    feedbacks = result
+                    # 計算平均分數
+                    avg_score = 0
+                    if feedbacks and len(feedbacks) > 0:
+                        avg_score = sum(item.get('score', 0) for item in feedbacks) / len(feedbacks)
+                    # 生成圖表
+                    chart_img = generate_chart(feedbacks, avg_score)
+                
+                return jsonify({
+                    'success': True,
+                    'feedback': feedbacks,
+                    'avg_score': avg_score,
+                    'chart': chart_img
+                })
             
-            print(f"評估成功，結果類型: {type(result)}")
-            
-            # 解析結果
-            if isinstance(result, tuple) and len(result) == 3:
-                feedbacks, avg_score, chart_img = result
-            else:
-                feedbacks = result
-                # 計算平均分數
-                avg_score = 0
-                if feedbacks and len(feedbacks) > 0:
-                    avg_score = sum(item.get('score', 0) for item in feedbacks) / len(feedbacks)
-                # 生成圖表
-                from mcp_feedback import generate_chart
-                chart_img = generate_chart(feedbacks, avg_score)
-            
-            return jsonify({
-                'success': True,
-                'feedback': feedbacks,
-                'avg_score': avg_score,
-                'chart': chart_img
-            })
-        
-        except Exception as e:
-            print(f"評估函數執行錯誤: {e}")
-            traceback.print_exc()
-            return jsonify({'error': str(e)}), 500
+            except Exception as e:
+                print(f"評估函數執行錯誤: {e}")
+                traceback.print_exc()
+                return jsonify({'error': str(e)}), 500
 
     except Exception as e:
         print(f"評估處理整體錯誤: {e}")
@@ -314,18 +421,26 @@ def generate_score_chart(feedback_data, avg_score):
         return ""
     
     # 準備繪圖資料
-    import plotly.graph_objects as go
-    import base64
-    
-    # 準備繪圖資料
     labels = [f"Persona {item['persona_id']}" for item in feedback_data]
     scores = [item['score'] for item in feedback_data]
+    
+    # 使用新的顏色方案
+    colors = []
+    for s in scores:
+        if s >= 8:
+            colors.append('#E36E6C')  # 高分使用紅色系
+        elif s >= 6:
+            colors.append('#4E374C')  # 中高分使用深色系
+        elif s >= 4:
+            colors.append('#F7C375')  # 中低分使用橙色系
+        else:
+            colors.append('#E9DCCB')  # 低分使用淺色系
     
     # 創建長條圖
     fig = go.Figure(go.Bar(
         x=labels,
         y=scores,
-        marker_color=['green' if s >= 8 else 'blue' if s >= 6 else 'orange' if s >= 4 else 'red' for s in scores],
+        marker_color=colors,
         text=scores,
         textposition='auto',
     ))
@@ -337,7 +452,7 @@ def generate_score_chart(feedback_data, avg_score):
         x1=len(labels) - 0.5,
         y0=avg_score,
         y1=avg_score,
-        line=dict(color="red", width=2, dash="dash"),
+        line=dict(color="#4E374C", width=2, dash="dash"),
     )
     
     # 添加註解
@@ -347,6 +462,9 @@ def generate_score_chart(feedback_data, avg_score):
         text=f"平均: {avg_score:.1f}",
         showarrow=True,
         arrowhead=1,
+        bgcolor="#E9DCCB",
+        bordercolor="#4E374C",
+        borderwidth=1,
     )
     
     # 配置圖表
@@ -441,8 +559,7 @@ def download_feedback():
             return jsonify({'error': '没有评估数据可下载'}), 400
             
         # 创建CSV内容
-        import csv
-        import io
+        
         
         output = io.StringIO()
         writer = csv.writer(output)

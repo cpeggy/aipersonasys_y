@@ -8,15 +8,11 @@ import zipfile
 import io
 import base64
 import plotly.graph_objects as go
-from autogen_agentchat.agents import AssistantAgent
-from autogen_agentchat.teams import RoundRobinGroupChat
-from autogen_agentchat.messages import TextMessage
-from autogen_agentchat.conditions import TextMentionTermination
-from autogen_ext.models.openai import OpenAIChatCompletionClient
 import time
 from openai import RateLimitError  # 確保導入這個
 import opencc
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import google.generativeai as genai
 
 GEMINI_MODEL = "gemini-2.0-flash"
 MAX_RETRIES = 5  # 最大重試次數
@@ -340,84 +336,81 @@ async def process_large_csv2(csv_path, output_folder, batch_size=15000):
     retry=retry_if_exception_type((RateLimitError, RuntimeError, asyncio.TimeoutError))
 )
 async def _generate_personas(prompt):
-    """使用 tenacity 庫增強重試機制的 persona 生成函數"""
+    """直接使用 Gemini API 生成 personas，不使用 autogen-agentchat"""
     try:
         # 設置較長的超時時間
         timeout = 60  # 60 秒超時
         
-        # 創建模型客戶端
-        model_client = OpenAIChatCompletionClient(
-            model=GEMINI_MODEL, 
-            api_key=os.getenv("Gemini_api"),
-            timeout=timeout
-        )
+        # 直接使用 Google Gemini API
+        genai.configure(api_key=os.getenv("Gemini_api"))
+        model = genai.GenerativeModel(GEMINI_MODEL)
         
-        # 創建聊天實例
-        chat = RoundRobinGroupChat(
-            [AssistantAgent("gen", model_client)],
-            termination_condition=TextMentionTermination("TERMINATE")
-        )
-
-        personas = []
-        messages = []
-
-        try:
-            # 設置超時
-            async def run_with_timeout():
-                async for event in chat.run_stream(task=prompt):
-                    if isinstance(event, TextMessage):
-                        messages.append({
-                            "source": event.source,
-                            "content": event.content,
-                            "type": event.type,
-                            "prompt_tokens": event.models_usage.prompt_tokens if event.models_usage else None,
-                            "completion_tokens": event.models_usage.completion_tokens if event.models_usage else None
-                        })
-                        blocks = re.findall(r"```json\n(.*?)\n```", event.content, re.DOTALL)
-                        for block in blocks:
-                            try:
-                                obj = json.loads(block)
-                                if isinstance(obj, dict):
-                                    personas.append(obj)
-                                elif isinstance(obj, list):
-                                    personas.extend(obj)
-                            except json.JSONDecodeError as json_err:
-                                print(f"JSON 解析錯誤: {json_err}")
-                                # 嘗試修正 JSON 並再次解析
-                                try:
-                                    fixed_block = block.replace("'", '"').replace("\\", "\\\\")
-                                    obj = json.loads(fixed_block)
-                                    if isinstance(obj, dict):
-                                        personas.append(obj)
-                                    elif isinstance(obj, list):
-                                        personas.extend(obj)
-                                except:
-                                    print("修正 JSON 失敗，略過此區塊")
+        # 使用超時控制
+        async def run_with_timeout():
+            # 由於 genai 庫沒有異步支持，我們在執行緒池中執行同步 API 呼叫
+            loop = asyncio.get_event_loop()
             
-            # 使用 asyncio.wait_for 設置超時
-            await asyncio.wait_for(run_with_timeout(), timeout=timeout)
-                
+            def sync_call():
+                try:
+                    response = model.generate_content(prompt)
+                    return response.text
+                except Exception as e:
+                    print(f"Gemini API 呼叫錯誤: {e}")
+                    raise
+            
+            response_text = await loop.run_in_executor(None, sync_call)
+            return response_text
+        
+        # 設置超時
+        try:
+            response_text = await asyncio.wait_for(run_with_timeout(), timeout=timeout)
         except asyncio.TimeoutError:
             print(f"API 呼叫超時 ({timeout} 秒)")
             raise
-            
-        # 成功完成，返回結果
+        
+        # 解析回應中的 JSON 格式 persona 數據
+        personas = []
+        messages = [{"content": prompt, "role": "user"}, {"content": response_text, "role": "assistant"}]
+        
+        # 尋找 JSON 區塊
+        blocks = re.findall(r"```json\n(.*?)\n```", response_text, re.DOTALL)
+        for block in blocks:
+            try:
+                obj = json.loads(block)
+                if isinstance(obj, dict):
+                    personas.append(obj)
+                elif isinstance(obj, list):
+                    personas.extend(obj)
+            except json.JSONDecodeError as json_err:
+                print(f"JSON 解析錯誤: {json_err}")
+                # 嘗試修正 JSON 並再次解析
+                try:
+                    fixed_block = block.replace("'", '"').replace("\\", "\\\\")
+                    obj = json.loads(fixed_block)
+                    if isinstance(obj, dict):
+                        personas.append(obj)
+                    elif isinstance(obj, list):
+                        personas.extend(obj)
+                except Exception as fix_err:
+                    print(f"修正 JSON 失敗: {fix_err}，略過此區塊")
+        
+        # 檢查是否找到有效的 personas
         if personas:
             return personas, messages
         else:
             print("API 返回無效: 未找到有效的 persona 資料")
             raise ValueError("未能生成有效的 persona 資料")
-        
+            
     except Exception as e:
         error_str = str(e)
         
         # 檢查是否為速率限制錯誤 (429 或 503)
         if "429" in error_str or "RateLimitError" in error_str or "overloaded" in error_str:
             print(f"遇到 API 速率限制或過載錯誤: {error_str}")
-            # tenacity 會處理重試
+            # 重試裝飾器會處理重試
             raise
         else:
-            # 其他錯誤，也讓 tenacity 嘗試重試
+            # 其他錯誤，讓重試裝飾器嘗試重試
             print(f"發生其他錯誤: {error_str}")
             raise
             

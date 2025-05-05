@@ -37,7 +37,7 @@ def ensure_directories():
 
 
 # 初始化 Flask
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 ensure_directories()
 
 

@@ -17,15 +17,54 @@ import zipfile
 import csv
 import io
 import time
+from pathlib import Path
+import errno
+
+def ensure_directories():
+    """確保所有必要的目錄存在"""
+    directories = [
+        'uploads',
+        'outputs',
+        'outputs/personas',
+        'outputs/personas/csv',
+        'outputs/personas/csv2',
+        'outputs/personas/md'
+    ]
+    
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        print(f"確保目錄存在: {directory}")
+
 
 # 初始化 Flask
 app = Flask(__name__)
+ensure_directories()
 
-# 配置
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['OUTPUT_FOLDER'] = 'outputs'
+
+def safe_makedirs(path):
+    """安全地創建目錄，處理權限問題"""
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            print(f"無法創建目錄 {path}: {e}")
+            # 嘗試使用臨時目錄
+            temp_path = os.path.join('/tmp', path)
+            os.makedirs(temp_path, exist_ok=True)
+            return temp_path
+    return path
+
+# 更新配置以使用安全的目錄創建
+app.config['UPLOAD_FOLDER'] = safe_makedirs('uploads')
+app.config['OUTPUT_FOLDER'] = safe_makedirs('outputs')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
-app.config['FILE_RETENTION_HOURS'] = 2  # 檔案保留時間（小時）
+app.config['FILE_RETENTION_HOURS'] = 3  # 檔案保留時間（小時）
+
+
+# 在每個請求前也檢查
+@app.before_request
+def before_request():
+    ensure_directories()
 
 # 確保資料夾存在
 for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER'], 

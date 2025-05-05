@@ -1,1 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Flask
+instance/
+.webassets-cache
+
+# 忽略上傳和輸出檔案，但保留資料夾結構
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+!outputs/personas/
+outputs/personas/*
+!outputs/personas/.gitkeep
+!outputs/personas/csv/
+!outputs/personas/csv2/
+!outputs/personas/md/
+outputs/personas/csv/*
+!outputs/personas/csv/.gitkeep
+outputs/personas/csv2/*
+!outputs/personas/csv2/.gitkeep
+outputs/personas/md/*
+!outputs/personas/md/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# 環境變數
+.env
+
+# 系統檔案
 .DS_Store
+Thumbs.db

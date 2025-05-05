@@ -1,1 +1,1 @@
-web: gunicorn app:app --workers=1 --threads=2 --worker-class=gthread
+web: mkdir -p uploads outputs/personas/csv outputs/personas/csv2 outputs/personas/md && gunicorn app:app

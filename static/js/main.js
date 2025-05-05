@@ -32,6 +32,11 @@ $(document).ready(function() {
     }
 });
 
+// 在檔案開頭添加警告函數
+function showTemporaryStorageWarning() {
+    showToast('提醒：所有上傳的檔案和生成的結果僅暫時保存，請及時下載所需檔案。系統重啟後資料將會清除。', 'warning');
+}
+
 // ====== API Key 管理 ======
 function initializeAPIKey() {
     // 從 localStorage 讀取 API Key
@@ -297,6 +302,7 @@ function showToast(message, type = 'info') {
 // ====== 上傳 CSV 處理 ======
 function processCSVForm() {
     return new Promise((resolve, reject) => {
+        showTemporaryStorageWarning();
         const apiKey = $('#gemini-key').val().trim();
         if (!apiKey) {
             showToast('請先設定 Gemini API Key', 'warning');
@@ -381,6 +387,7 @@ function processCSVForm() {
 // ====== 上傳 CSV2 處理 - 支援多檔案 ======
 function processCSV2Form() {
     return new Promise((resolve, reject) => {
+        showTemporaryStorageWarning();
         const apiKey = $('#gemini-key').val().trim();
         if (!apiKey) {
             showToast('請先設定 Gemini API Key', 'warning');
@@ -460,6 +467,7 @@ function processCSV2Form() {
 // ====== 上傳 MD 處理 ======
 function processMDForm() {
     return new Promise((resolve, reject) => {
+        showTemporaryStorageWarning();
         const apiKey = $('#gemini-key').val().trim();
         if (!apiKey) {
             showToast('請先設定 Gemini API Key', 'warning');
@@ -599,77 +607,141 @@ function processFeedbackForm() {
         // 用於儲存累積的回應和上次處理的位置
         let lastProcessedPosition = 0;
         
-        xhr.onprogress = function(e) {
-            const currentResponse = e.currentTarget.responseText;
-            const newData = currentResponse.substring(lastProcessedPosition);
-            lastProcessedPosition = currentResponse.length;
+        // 修改 processFeedbackForm 函數中的 xhr.onprogress 部分
+xhr.onprogress = function(e) {
+    const currentResponse = e.currentTarget.responseText;
+    const newData = currentResponse.substring(lastProcessedPosition);
+    lastProcessedPosition = currentResponse.length;
 
-            console.log('收到新數據:', newData);  // 調試用
+    console.log('收到新數據:', newData);  // 調試用
 
-            const lines = newData.split('\n');
-            
-            lines.forEach(line => {
-            if (line.startsWith('data: ')) {
-                try {
-                    const dataStr = line.substring(6);
-                    if (dataStr.trim()) {
-                        const data = JSON.parse(dataStr);
-                        console.log('解析的數據:', data);  // 調試用
+    const lines = newData.split('\n');
+    
+    lines.forEach(line => {
+        if (line.startsWith('data: ')) {
+            try {
+                const dataStr = line.substring(6);
+                if (dataStr.trim()) {
+                    const data = JSON.parse(dataStr);
+                    console.log('解析的數據:', data);  // 調試用
+                    
+                    if (data.type === 'progress') {
+                        // 更新進度條
+                        console.log('更新進度條:', data.batch_current, '/', data.batch_total);
+                        updateSegmentedProgress(
+                            'feedback-progress', 
+                            data.batch_current, 
+                            data.batch_total, 
+                            data.message, 
+                            data.batch_message
+                        );
+                    } else if (data.type === 'complete') {
+                        // 處理完成
+                        console.log('處理完成');
+                        $('#feedback-progress').addClass('d-none');
+                        $('#feedback-submit').prop('disabled', false);
                         
-                        if (data.type === 'progress') {
-                            // 更新進度條
-                            console.log('更新進度條:', data.batch_current, '/', data.batch_total);
-                            updateSegmentedProgress(
-                                'feedback-progress', 
-                                data.batch_current, 
-                                data.batch_total, 
-                                data.message, 
-                                data.batch_message
-                            );
-                            } else if (data.type === 'complete') {
-                            // 處理完成
-                            console.log('處理完成');
-                            $('#feedback-progress').addClass('d-none');
-                            $('#feedback-submit').prop('disabled', false);
+                        if (data.success) {
+                            // 顯示結果區域
+                            $('#feedback-result').removeClass('d-none');
                             
-                            if (data.success) {
-                                // 顯示結果區域
-                                $('#feedback-result').removeClass('d-none');
-                                
-                                // 設置圖表
-                                if (data.chart) {
-                                    $('#score-chart').attr('src', 'data:image/png;base64,' + data.chart);
-                                } else {
-                                    $('#score-chart').html('<div class="alert alert-warning">無法生成圖表</div>');
-                                }
-                                
-                                // 處理其他結果數據
-                                processBuyReasons(data.feedback);
-                                generateFeedbackCards(data.feedback);
-                                
-                                window.feedbackData = data.feedback;
-                                window.marketingCopy = marketingCopy;
-                                
-                                setupFeedbackModal();
-                                showToast('評估完成！', 'success');
+                            // 設置圖表
+                            if (data.chart) {
+                                $('#score-chart').attr('src', 'data:image/png;base64,' + data.chart);
                             } else {
-                                showToast('評估失敗: ' + (data.error || '未知錯誤'), 'danger');
+                                $('#score-chart').html('<div class="alert alert-warning">無法生成圖表</div>');
                             }
                             
-                            resolve(data);
-                        } else if (data.type === 'error') {
-                            console.error('處理錯誤:', data.error);
-                            $('#feedback-progress').addClass('d-none');
-                            $('#feedback-submit').prop('disabled', false);
-                            showToast('處理反饋時出錯: ' + data.error, 'danger');
-                            reject(new Error(data.error));
+                            // 處理其他結果數據
+                            processBuyReasons(data.feedback);
+                            generateFeedbackCards(data.feedback);
+                            
+                            window.feedbackData = data.feedback;
+                            window.marketingCopy = marketingCopy;
+                            
+                            setupFeedbackModal();
+                            showToast('評估完成！', 'success');
+                        } else {
+                            showToast('評估失敗: ' + (data.error || '未知錯誤'), 'danger');
                         }
-                        }
-                    } catch (error) {
-                        console.error('解析串流數據錯誤:', error, 'Line:', line);
+                        
+                        resolve(data);
+                    } else if (data.type === 'error') {
+                        console.error('處理錯誤:', data.error);
+                        $('#feedback-progress').addClass('d-none');
+                        $('#feedback-submit').prop('disabled', false);
+                        showToast('處理反饋時出錯: ' + data.error, 'danger');
+                        reject(new Error(data.error));
                     }
                 }
-            });
+            } catch (error) {
+                console.error('解析串流數據錯誤:', error, 'Line:', line);
+                
+                // 特殊處理完成消息
+                if (line.includes('"type": "complete"')) {
+                    try {
+                        // 嘗試更安全的解析方法
+                        const safeDataStr = line.substring(6)
+                            .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // 移除控制字符
+                            .replace(/\\u([0-9a-fA-F]{4})/g, function(match, grp) {
+                                return String.fromCharCode(parseInt(grp, 16));
+                            });
+                        
+                        // 如果仍然無法解析，嘗試使用正則表達式提取數據
+                        if (safeDataStr.includes('"success": true')) {
+                            console.log('使用備用解析方法處理完成消息');
+                            
+                            // 直接顯示成功界面，不依賴圖表
+                            $('#feedback-progress').addClass('d-none');
+                            $('#feedback-submit').prop('disabled', false);
+                            $('#feedback-result').removeClass('d-none');
+                            
+                            // 嘗試提取 feedback 數據
+                            try {
+                                const feedbackMatch = safeDataStr.match(/"feedback":\s*(\[[\s\S]*?\])/);
+                                if (feedbackMatch) {
+                                    const feedback = JSON.parse(feedbackMatch[1]);
+                                    processBuyReasons(feedback);
+                                    generateFeedbackCards(feedback);
+                                    window.feedbackData = feedback;
+                                    window.marketingCopy = marketingCopy;
+                                }
+                            } catch (extractError) {
+                                console.error('無法提取 feedback 數據:', extractError);
+                            }
+                            
+                            // 嘗試提取圖表數據
+                            try {
+                                const chartMatch = safeDataStr.match(/"chart":\s*"([^"]+)"/);
+                                if (chartMatch) {
+                                    $('#score-chart').attr('src', 'data:image/png;base64,' + chartMatch[1]);
+                                } else {
+                                    $('#score-chart').html('<div class="alert alert-info">圖表數據暫時無法顯示</div>');
+                                }
+                            } catch (chartError) {
+                                console.error('無法提取圖表數據:', chartError);
+                                $('#score-chart').html('<div class="alert alert-info">圖表數據暫時無法顯示</div>');
+                            }
+                            
+                            setupFeedbackModal();
+                            showToast('評估完成！', 'success');
+                            resolve({ success: true });
+                        }
+                    } catch (fallbackError) {
+                        console.error('備用解析方法也失敗:', fallbackError);
+                        
+                        // 最後的備用方案：假設評估成功但無法顯示詳細結果
+                        $('#feedback-progress').addClass('d-none');
+                        $('#feedback-submit').prop('disabled', false);
+                        $('#feedback-result').removeClass('d-none');
+                        $('#score-chart').html('<div class="alert alert-warning">評估已完成，但無法顯示詳細結果</div>');
+                        showToast('評估完成，但部分結果可能無法顯示', 'warning');
+                        resolve({ success: true });
+                    }
+                }
+            }
+        }
+    });
         };
         
         xhr.onload = function() {
@@ -1193,4 +1265,22 @@ function testProgressBar() {
             }, 1000);
         }
     }, 2000);
+}
+
+// 添加可關閉的警告橫幅
+function addStorageWarningBanner() {
+    const banner = `
+        <div id="storage-warning-banner" class="alert alert-warning alert-dismissible fade show m-3" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>重要提醒：</strong>本系統使用暫時性儲存，所有上傳的檔案和生成的結果在系統重啟後將會清除。請及時下載所需檔案。
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `;
+    
+    $('body').prepend(banner);
+    
+    // 當使用者關閉橫幅時，記住選擇
+    $('#storage-warning-banner').on('closed.bs.alert', function () {
+        localStorage.setItem('tempStorageWarningDismissed', 'true');
+    });
 }

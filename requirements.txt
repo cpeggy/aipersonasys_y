@@ -16,3 +16,6 @@ tenacity==8.2.3
 autogen_agentchat
 autogen_ext
 tiktoken
+time
+matplotlib==3.7.0
+requests==2.31.0

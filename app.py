@@ -16,14 +16,21 @@ import threading
 import zipfile
 import csv
 import io
-
-app = Flask(__name__)
+import time
 
 # 初始化 Flask
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__)
+
+# 配置
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'outputs'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+app.config['FILE_RETENTION_HOURS'] = 2  # 檔案保留時間（小時）
+
+# 確保資料夾存在
+for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER'], 
+               os.path.join(app.config['OUTPUT_FOLDER'], "personas")]:
+    os.makedirs(folder, exist_ok=True)
 
 # 建立必要資料夾
 for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER'], os.path.join(app.config['OUTPUT_FOLDER'], "personas")]:
@@ -354,7 +361,7 @@ def handle_feedback():
                             'avg_score': avg_score,
                             'chart': chart_img
                         }
-                        yield f"data: {json.dumps(complete_data)}\n\n"
+                        yield f"data: {json.dumps(complete_data, ensure_ascii=True)}\n\n"
                     
                 except Exception as e:
                     error_data = {
@@ -482,9 +489,17 @@ def generate_score_chart(feedback_data, avg_score):
 @app.route('/download/<path:filename>', methods=['GET'])
 def download_file(filename):
     try:
-        return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename), as_attachment=True)
+        file_path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+        if os.path.exists(file_path):
+            # 添加檔案即將過期的警告到回應標頭
+            response = send_file(file_path, as_attachment=True)
+            response.headers['X-File-Expires'] = str(app.config['FILE_RETENTION_HOURS']) + ' hours'
+            return response
+        else:
+            return jsonify({'error': '檔案不存在或已過期'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 404
+
 
 @app.route('/load-personas', methods=['GET'])
 def load_saved_personas():
@@ -602,11 +617,78 @@ def get_status():
         'version': '1.0.0'
     })
 
+
+# 檔案清理函數
+def cleanup_old_files():
+    """定期清理舊檔案"""
+    while True:
+        try:
+            current_time = time.time()
+            retention_seconds = app.config['FILE_RETENTION_HOURS'] * 3600
+            
+            # 清理上傳資料夾
+            for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
+                if os.path.exists(folder):
+                    for filename in os.listdir(folder):
+                        filepath = os.path.join(folder, filename)
+                        if os.path.isfile(filepath):
+                            file_age = current_time - os.path.getmtime(filepath)
+                            if file_age > retention_seconds:
+                                try:
+                                    os.remove(filepath)
+                                    print(f"已刪除過期檔案: {filepath}")
+                                except Exception as e:
+                                    print(f"刪除檔案失敗 {filepath}: {e}")
+            
+            # 清理 personas 子資料夾
+            personas_dir = os.path.join(app.config['OUTPUT_FOLDER'], "personas")
+            if os.path.exists(personas_dir):
+                for subfolder in os.listdir(personas_dir):
+                    subfolder_path = os.path.join(personas_dir, subfolder)
+                    if os.path.isdir(subfolder_path):
+                        # 檢查資料夾修改時間
+                        folder_age = current_time - os.path.getmtime(subfolder_path)
+                        if folder_age > retention_seconds:
+                            try:
+                                shutil.rmtree(subfolder_path)
+                                print(f"已刪除過期資料夾: {subfolder_path}")
+                            except Exception as e:
+                                print(f"刪除資料夾失敗 {subfolder_path}: {e}")
+                                
+        except Exception as e:
+            print(f"清理程序錯誤: {e}")
+        
+        # 每30分鐘執行一次清理
+        time.sleep(1800)
+
+# 啟動清理執行緒
+cleanup_thread = threading.Thread(target=cleanup_old_files, daemon=True)
+cleanup_thread.start()
+
+# 添加系統狀態端點
+@app.route('/system-status', methods=['GET'])
+def system_status():
+    """回傳系統狀態資訊"""
+    upload_files = len([f for f in os.listdir(app.config['UPLOAD_FOLDER']) 
+                       if os.path.isfile(os.path.join(app.config['UPLOAD_FOLDER'], f))])
+    output_files = len([f for f in os.listdir(app.config['OUTPUT_FOLDER']) 
+                       if os.path.isfile(os.path.join(app.config['OUTPUT_FOLDER'], f))])
+    
+    return jsonify({
+        'status': 'ok',
+        'storage_type': 'temporary',
+        'file_retention_hours': app.config['FILE_RETENTION_HOURS'],
+        'upload_files_count': upload_files,
+        'output_files_count': output_files,
+        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
 # ============ 入口點 ============
 
 if __name__ == '__main__':
     # 設置 Gunicorn 相關參數，方便在 Render 上部署
-    port = int(os.environ.get('PORT', 5001))
+    port = int(os.environ.get('PORT', 5002))
+    debug = os.environ.get('FLASK_ENV') == 'development'
     print(f"啟動 Persona 系統，監聽 {port} port...")
     # 確保應用綁定到 0.0.0.0 以接受所有連接
     app.run(host='0.0.0.0', port=port)
